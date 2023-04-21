@@ -1,0 +1,20 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/home/luo/linux/lib/libpng/include",
+                "/home/luo/linux/lib/libjpeg/include",
+                "/home/luo/linux/lib/freetype/include/freetype2",
+                "/home/luo/linux/lib/tslib/include/"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "gnu17",
+            "cppStandard": "gnu++14",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}

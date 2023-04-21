@@ -1,0 +1,4 @@
+sudo cp main /home/luo/mnt/nfs/rootfs/home/luo/app
+sudo cp show_file /home/luo/mnt/nfs/rootfs/home/luo/app
+./show_file -f  /usr/share/fonts/DENGB.TTF 从零开始的穿越生涯.txt
+

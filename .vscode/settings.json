@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "cstdarg": "c",
+        "cstdio": "c",
+        "debug_manager.h": "c",
+        "display_manager.h": "c",
+        "font_render.h": "c",
+        "render.h": "c",
+        "typeinfo": "c"
+    }
+}

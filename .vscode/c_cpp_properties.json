@@ -7,7 +7,8 @@
                 "/home/luo/linux/lib/libpng/include",
                 "/home/luo/linux/lib/libjpeg/include",
                 "/home/luo/linux/lib/freetype/include/freetype2",
-                "/home/luo/linux/lib/tslib/include/"
+                "/home/luo/linux/lib/tslib/include/",
+                "/home/luo/linux/lib/giflib/include"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

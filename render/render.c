@@ -542,7 +542,9 @@ int merge_pixel_data_in_center(struct pixel_data *dst_data,struct pixel_data *sr
     return 0;
 }
 
-/* 原图像必须具有透明度,且为32bpp */
+/* @description : 将一个区域的图像并入到另一个区域，之所以说是合并而不是复制，是因为这个函数考虑了透明度，两个图像大小必须相同
+ * 支持的bpp有16、24、32，不能再复杂了 
+ * 又臭又长的一个函数*/
 int merge_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_data)
 {
     unsigned char *dst_line_buf,*src_line_buf;
@@ -554,13 +556,23 @@ int merge_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_data)
     unsigned short color;
 
     /* 如果条件任何不符,直接退出把 */
-    if(dst_data->width != src_data->width || dst_data->height != src_data->height || \
-       (dst_data->bpp != 16 && src_data->bpp != 32)){
-           return -1;
+    if(dst_data->width != src_data->width || dst_data->height != src_data->height){
+        DP_ERR("%s:src pic and dst pic has different size!\n",__func__);
+        return -1;
+    } 
+    if((dst_data->bpp != 16 && dst_data->bpp != 24 && dst_data->bpp != 32) ||
+       (src_data->bpp != 16 && src_data->bpp != 24 && src_data->bpp != 32)){
+        DP_ERR("%s:imcompatibel bpp,dst bpp %d,src bpp %d!\n",__func__,dst_data->bpp,src_data->bpp);
+        return -1;
+    }
+    if(src_data->bpp == 32 && !src_data->has_alpha){
+        DP_ERR("%s:bpp is 32 but has no alpha channel!\n",__func__);
+        return -1;
     }
 
     height = dst_data->height;
     width = dst_data->width;
+
     for(i = 0 ; i < height ; i++){
         if(dst_data->in_rows){
             dst_line_buf = dst_data->rows_buf[i];
@@ -572,28 +584,119 @@ int merge_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_data)
         }else{
             src_line_buf = src_data->buf + src_data->line_bytes * i;
         }
-        for(j = 0 ; j < width ; j++){
-            /* 取出各颜色分量 */
-            alpha     = src_line_buf[j * 4];
-            src_red   = src_line_buf[j * 4 + 1] >> 3;
-            src_green = src_line_buf[j * 4 + 2] >> 2;
-            src_blue  = src_line_buf[j * 4 + 3] >> 3;
-
-            color = *(unsigned short *)dst_line_buf;
-            dst_red   = (color >> 11) & 0x1f;
-            dst_green = (color >> 5) & 0x3f;
-            dst_blue  = color & 0x1f;
-
-            /* 根据透明度合并颜色,公式:显示颜色 = 源像素颜色 X alpha / 255 + 背景颜色 X (255 - alpha) / 255 */
-            red   = (src_red * alpha) / 255 + (dst_red * (255 - alpha)) / 255;
-            green = (src_green * alpha) / 255 + (dst_green * (255 - alpha)) / 255;
-            blue  = (src_blue * alpha) / 255 + (dst_blue * (255 - alpha)) / 255;
-            color = (red << 11) | (green << 5) | blue;
-
-            *(unsigned short *)dst_line_buf = color;
-            // *(unsigned short *)dst_line_buf = 0xff;
-            dst_line_buf += 2;
-        }
+        switch(src_data->bpp){
+        case 16:
+            switch(dst_data->bpp){
+            case 16:
+                memcpy(dst_line_buf,src_line_buf,dst_data->line_bytes);
+                break;
+            case 24:
+                for(j = 0 ; j < width ; j++){
+                    /* 取出各颜色分量 */
+                    color = *(unsigned short *)src_line_buf;
+                    src_red   = (color >> 11) << 3;
+                    src_green = ((color >> 5) & 0x3f) << 2;
+                    src_blue  = (color & 0x1f) << 3;
+                    
+                    dst_line_buf[j * 3] = src_red;
+                    dst_line_buf[j * 3 + 1] = src_green;
+                    dst_line_buf[j * 3 + 2] = src_blue;
+                    src_line_buf += 2;
+                }
+                break;
+            case 32:
+                for(j = 0 ; j < width ; j++){
+                    /* 取出各颜色分量 */
+                    color = *(unsigned short *)src_line_buf;
+                    src_red   = (color >> 11) << 3;
+                    src_green = ((color >> 5) & 0x3f) << 2;
+                    src_blue  = (color & 0x1f) << 3;
+                    
+                    dst_line_buf[j * 4] = 0;
+                    dst_line_buf[j * 4 + 1] = src_red;
+                    dst_line_buf[j * 4 + 2] = src_green;
+                    dst_line_buf[j * 4 + 2] = src_blue;
+                    src_line_buf += 2;
+                }
+                break;
+            }
+            break;
+        case 24:
+            switch(dst_data->bpp){
+            case 16:
+                for(j = 0 ; j < width ; j++){
+                    src_red     = src_line_buf[j * 3 + 0] >> 3;
+                    src_green   = src_line_buf[j * 3 + 1] >> 2;
+                    src_blue    = src_line_buf[j * 3 + 2] >> 3;
+                    color = (src_red << 11) | (src_green << 5) | src_blue;
+                    *(unsigned short *)dst_line_buf = color;
+                    dst_line_buf += 2;
+                }
+                break;
+            case 24:
+                memcpy(dst_line_buf,src_line_buf,dst_data->line_bytes);
+                break;
+            case 32:
+                for(j = 0 ; j < width ; j++){
+                    src_red     = src_line_buf[j * 3 + 0] >> 3;
+                    src_green   = src_line_buf[j * 3 + 1] >> 2;
+                    src_blue    = src_line_buf[j * 3 + 2] >> 3;
+                    dst_line_buf[j * 4]     = 0;
+                    dst_line_buf[j * 4 + 1] = src_red;
+                    dst_line_buf[j * 4 + 2] = src_green;
+                    dst_line_buf[j * 4 + 2] = src_blue;
+                }
+                break;
+            }
+            break;
+        case 32:
+            switch(dst_data->bpp){
+            case 16:
+                for(j = 0 ; j < width ; j++){
+                    alpha     = src_line_buf[j * 4];
+                    src_red   = src_line_buf[j * 4 + 1] >> 3;
+                    src_green = src_line_buf[j * 4 + 2] >> 2;
+                    src_blue  = src_line_buf[j * 4 + 3] >> 3;
+                    color = *(unsigned short *)dst_line_buf;
+                    dst_red   = (color >> 11) & 0x1f;
+                    dst_green = (color >> 5) & 0x3f;
+                    dst_blue  = color & 0x1f;
+                    /* 根据透明度合并颜色,公式:显示颜色 = 源像素颜色 X alpha / 255 + 背景颜色 X (255 - alpha) / 255 */
+                    red   = (src_red * alpha) / 255 + (dst_red * (255 - alpha)) / 255;
+                    green = (src_green * alpha) / 255 + (dst_green * (255 - alpha)) / 255;
+                    blue  = (src_blue * alpha) / 255 + (dst_blue * (255 - alpha)) / 255;
+                    color = (red << 11) | (green << 5) | blue;
+                    *(unsigned short *)dst_line_buf = color;
+                    // *(unsigned short *)dst_line_buf = 0xff;
+                    dst_line_buf += 2;
+                }
+                break;
+            case 24:
+                for(j = 0 ; j < width ; j++){
+                    alpha     = src_line_buf[j * 4];
+                    src_red   = src_line_buf[j * 4 + 1];
+                    src_green = src_line_buf[j * 4 + 2];
+                    src_blue  = src_line_buf[j * 4 + 3];
+                    dst_red   = dst_line_buf[j * 3] ;
+                    dst_green = dst_line_buf[j * 3 + 1];
+                    dst_blue  = dst_line_buf[j * 3 + 2];
+                    
+                    /* 根据透明度合并颜色,公式:显示颜色 = 源像素颜色 X alpha / 255 + 背景颜色 X (255 - alpha) / 255 */
+                    red   = (src_red * alpha) / 255 + (dst_red * (255 - alpha)) / 255;
+                    green = (src_green * alpha) / 255 + (dst_green * (255 - alpha)) / 255;
+                    blue  = (src_blue * alpha) / 255 + (dst_blue * (255 - alpha)) / 255;
+                    color = (red << 11) | (green << 5) | blue;
+                    dst_line_buf[j * 3]     = red;
+                    dst_line_buf[j * 3 + 1] = green;
+                    dst_line_buf[j * 3 + 2] = blue;
+                }
+                break;
+            case 32:
+                memcpy(dst_line_buf,src_line_buf,dst_data->line_bytes);
+                break;
+            }
+            break;
+        }  
     }
     return 0;
 }

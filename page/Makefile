@@ -2,3 +2,4 @@ obj-y+=page_manager.o
 obj-y+=main_page.o
 obj-y+=browse_page.o
 obj-y+=view_pic_page.o
+obj-y+=auto_page.o

@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/time.h>
-#include <linux/time.h>
+// #include <linux/time.h>
 
 #include "page_manager.h"
 #include "display_manager.h"
@@ -19,8 +19,15 @@
 
 struct file_info 
 {
-    const char *file_name;
+    char *file_name;
     int file_type;
+};
+
+/* 此页面的私有结构，用于从其他页面接收连播目录和连播间隔信息 */
+struct autoplay_private
+{
+    unsigned int autoplay_interval;
+    const char **autoplay_dirs;
 };
 
 #define FILE_COUNT 10
@@ -86,7 +93,7 @@ static int auto_page_init(void)
     return 0;
 }
 
-static int auto_page_exit(void)
+static void auto_page_exit(void)
 {
     if(auto_page.allocated){
         free(auto_page.page_mem.buf);
@@ -95,7 +102,6 @@ static int auto_page_exit(void)
     if(auto_page.region_mapped){
         unmap_regions_to_page_mem(&auto_page);
     }
-    return 0;
 }
 
 static int get_autoplay_file_infos(const char **cur_dirs,int *cur_dir_index,int *file_index_in_dir,
@@ -122,7 +128,7 @@ static int get_autoplay_file_infos(const char **cur_dirs,int *cur_dir_index,int 
         for(i = 0 ; i < origin_dir_num ; i++){
             if(is_reg_file(cur_dir,origin_dirents[i]->d_name)){
                 /* 如果查找已经回绕，检查是否又回到了第一个开始查找 */
-                if(round && (old_dir_index == cur_dir_index) && (old_file_index == file_index_in_dir)){
+                if(round && (old_dir_index == *cur_dir_index) && (old_file_index == *file_index_in_dir)){
                     ret = 0;
                     goto free_origin_dirents;
                 }
@@ -164,7 +170,7 @@ static int get_autoplay_file_infos(const char **cur_dirs,int *cur_dir_index,int 
 
         /* 如果找完第一个目录未找到10个图片文件，且指定了多个目录，尝试读取其他目录 */
         if(cur_dirs[(*cur_dir_index) + 1]){
-            *cur_dir_index++;
+            (void)*cur_dir_index++;
             *file_index_in_dir = 0;
             continue;
         }else{
@@ -224,7 +230,7 @@ static int resize_pic_pixel_data(struct pixel_data *data,int region_width,int re
     temp_data.width = zoomed_width;
     temp_data.height = zoomed_height;
 
-    ret = pic_zoom_with_same_bpp(data,&temp_data);
+    ret = pic_zoom_with_same_bpp(&temp_data,data);
     if(ret){
         DP_ERR("%s:pic_zoom_with_same_bpp failed！\n",__func__);
         return ret;
@@ -334,7 +340,7 @@ wait_exit:
     } 
 }
 
-static int auto_page_run(struct page_param *param)
+static int auto_page_run(struct page_param *pre_param)
 {
     int ret;
     int region_index;
@@ -371,14 +377,14 @@ static int auto_page_run(struct page_param *param)
     /* 获取要连播的图片文件信息数组 */
     if(!cur_dirs){
         /* 如果还没有指定要连播的目录，则进入“浏览页面”选择 */
-        next_page = get_page_by_name("browose_page");
+        next_page = get_page_by_name("browse_page");
         if(!next_page){
             DP_ERR("%s:get browse page failed!\n",__func__);
             return -1;
         }
         cur_dir_index = 0;
-        param->id = auto_page.id;
-        param->private_data = &cur_dirs;
+        param.id = auto_page.id;
+        param.private_data = &cur_dirs;
         next_page->run(&param);
     }
     ret = get_autoplay_file_infos(cur_dirs,&cur_dir_index,&file_index_in_dir,cur_files,&cur_file_nums);
@@ -401,18 +407,23 @@ static int auto_page_run(struct page_param *param)
             autoplay_thread_exit = 1;                   /* 线程函数检测到这个变量为1后会退出 */
             pthread_mutex_unlock(&autoplay_thread_mutex);
             pthread_join(autoplay_thread_id, NULL);     /* 等待子线程退出 */
-            return;
+            return 0;
         }
     }
     
 }
 
+static struct autoplay_private auto_priv = {
+    .autoplay_interval = 3,             /* 默认间隔设为3s */
+};
+
 static struct page_struct auto_page = {
-    .name = "auto_page",
+    .name = "autoplay_page",
     .init = auto_page_init,
     .exit = auto_page_exit,
     .run  = auto_page_run,
     .allocated = 0,
+    .private_data = &auto_priv,
 };
 
 int autoplay_init(void)

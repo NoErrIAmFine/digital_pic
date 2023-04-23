@@ -33,8 +33,10 @@ struct page_region
     unsigned int allocated:1;
     /* 是否被按下 */
     unsigned int pressed:1;
-    /* 是否被显示 */
-    unsigned int displayed:1;
+    /* 是否可见，默认为可见 */
+    unsigned int invisible:1;
+    /* 是否被选中 */
+    unsigned int selected;
 };
 
 struct page_layout
@@ -64,6 +66,7 @@ struct page_struct
     int (*init)(void);
     void (*exit)(void);
     int (*run)(struct page_param*);
+    void *private_data;
     /* 是否已分配内存 */
     unsigned int allocated:1;
     /* 是否已计算好布局 */
@@ -86,6 +89,9 @@ void show_page_struct(void);
  */
 int get_input_event_for_page(struct page_struct*,struct my_input_event*);
 
+/* 根据图片文件名读入相应图片的原始数据,此函数负责分配内存,此函数不负责缩放 */
+int get_pic_pixel_data(const char *file_name,char file_type,struct pixel_data *pixel_data);
+
 /*
  * @description : 将页面中的某块区域输入屏幕缓存中
  */
@@ -97,6 +103,7 @@ int unmap_regions_to_page_mem(struct page_struct *page);
 int main_init(void);
 int browse_init(void);
 int view_pic_init(void);
+int autoplay_init(void);
 int page_init(void);
 
 #endif // !__PAGE_MANAGER_H

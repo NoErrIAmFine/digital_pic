@@ -14,7 +14,7 @@
 
 static const char *special_dirs[] = {"sbin", "bin", "usr", "lib", "proc", "tmp", "dev", "sys", NULL};
 
-static int is_reg_file(const char *path,const char *name)
+int is_reg_file(const char *path,const char *name)
 {
     char full_name[256];
     struct stat f_stat;
@@ -32,7 +32,7 @@ static int is_reg_file(const char *path,const char *name)
 }
 
 /* 常规目录是指除/sbin等几个特殊目录以外的其他的目录 */
-static int is_reg_dir(const char *path,const char *name)
+int is_reg_dir(const char *path,const char *name)
 {
     int i,ret;
     const char *temp_dir;
@@ -62,7 +62,7 @@ static int is_reg_dir(const char *path,const char *name)
     }
 }
 
-static int is_dir(const char *path,const char *name)
+int is_dir(const char *path,const char *name)
 {
     char full_name[256];
     struct stat f_stat;
@@ -114,7 +114,7 @@ int get_dir_contents(const char *dir_name,struct dir_entry ***dir_contents,unsig
             my_dir_entrys[my_dir_index] = malloc(sizeof(struct dir_entry));
             if(!my_dir_entrys[my_dir_index]){
                 DP_ERR("%s:malloc failed!\n",__func__);
-                return -ENOMEM;;
+                return -ENOMEM;
             }
             /* 将信息复制到自己的数组中去 */
             strncpy(my_dir_entrys[my_dir_index]->name,orig_dirents[i]->d_name,256);

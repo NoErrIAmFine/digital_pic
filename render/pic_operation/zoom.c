@@ -4,48 +4,54 @@
 #include <errno.h>
 #include <stdlib.h>
 
-/* 缩放图像，且只能缩小，缩放后的数据是按行存储的 */
-int pic_zoom_in_rows(struct pixel_data *raw_data,struct pixel_data *zoomed_data)
+/* @description : 缩放图像，且只能缩小
+ * @param : zoomed_data - 缩放后的图像，必须在此参数内传入要缩放到的大小信息；可以在此参数指定bpp，支持的bpp有16，24，32，
+ * 如果不指定(bpp为0），则与源数据bpp相同；此参数可含指向已分配内存的指针，如果该指针为空，该函数会负责分配内存
+ * @param : src_data - 原始数据，支持的bpp有16，24，32
+ * @return : 0 - 成功 ； 其他值 - 失败
+ */
+int pic_zoom(struct pixel_data *zoomed_data,struct pixel_data *src_data)
 {
     int i,j;
     unsigned short red,green,blue,color;
     int zoomed_width   = zoomed_data->width;
     int zoomed_height  = zoomed_data->height;
-    int src_line_bytes = raw_data->line_bytes;
-    unsigned char *src_buf = raw_data->buf;
+    int src_line_bytes = src_data->line_bytes;
+    unsigned char *src_buf = src_data->buf;
     unsigned char *dst_line_buf;
     unsigned char **dst_buf = zoomed_data->rows_buf;
     float scale_y,scale_x;
     unsigned int scale_x_table[zoomed_width];
 
-    /* 一些特殊情况不处理 */ 
-    if(zoomed_data->width >= raw_data->width || zoomed_data->height >=raw_data->height){
+    /* 检查一些条件 */ 
+    if(zoomed_data->width >= src_data->width || zoomed_data->height >=src_data->height){
         DP_WARNING("%s:err!\n",__func__);
         return -1;
     }
-    /* bpp只支持16到16、16到24的转换，更多的情况暂不考虑 */
-    if(zoomed_data->bpp != 16 || (raw_data->bpp != 16 && raw_data->bpp != 24)){
-        DP_WARNING("%s:imcompatibel bpp!\n",__func__);
+    /* bpp只支持16、24、32的转换，更多的情况暂不考虑 */
+    if((zoomed_data->bpp != 16 && zoomed_data->bpp != 24 && zoomed_data->bpp != 32 && zoomed_data->bpp != 0) || \
+       (src_data->bpp != 16 && src_data->bpp != 24 && src_data->bpp != 24)){
+        DP_WARNING("%s:imcompatibel bpp,zoomed bpp %d,src bpp %d!\n",__func__,zoomed_data->bpp,src_data->bpp);
         return -1;
     }
     
     /* 计算x方向上的比例系数 */
-    scale_x = (float)(raw_data->width) / zoomed_data->width;
+    scale_x = (float)(src_data->width) / zoomed_data->width;
     for(i = 0 ; i < zoomed_width ; i++){
         scale_x_table[i] = scale_x * i;
     }
     
-    scale_y = (float)(raw_data->height) / zoomed_data->height;
+    scale_y = (float)(src_data->height) / zoomed_data->height;
     for(i = 0 ; i < zoomed_height ; i++){
         
         dst_line_buf = dst_buf[i];
         src_buf += (((unsigned int)(scale_y * i)) * src_line_bytes);
-        if(raw_data->bpp == 16){
+        if(src_data->bpp == 16){
             for(j = 0 ; j < zoomed_width ; j++){
                 *(unsigned short *)dst_line_buf = *(unsigned short*)(src_buf + j * scale_x_table[j] * 2);
                 dst_line_buf += 2;
             }
-        }else if(raw_data->bpp == 24){
+        }else if(src_data->bpp == 24){
             for(j = 0 ; j < zoomed_width ; j++){
                 int temp = j * scale_x_table[j];
                 red   = src_buf[temp * 3] >> 3;
@@ -278,7 +284,7 @@ int pic_zoom_with_same_bpp_and_rotate(struct pixel_data *src_data,struct pixel_d
 
 
 /* 至少要指定目的图像的长宽 */
-int pic_zoom_with_same_bpp(struct pixel_data *src_data,struct pixel_data *dst_data)
+int pic_zoom_with_same_bpp(struct pixel_data *dst_data,struct pixel_data *src_data)
 {
     float x_scale,y_scale;
     unsigned char *dst_line_buf,*src_line_buf,*src_buf;
@@ -295,14 +301,19 @@ int pic_zoom_with_same_bpp(struct pixel_data *src_data,struct pixel_data *dst_da
     /* 如果需要的话，为目的图像分配内存 */
     if(!dst_data->buf && !dst_data->rows_buf){
         dst_data->bpp = src_data->bpp;
-        dst_data->line_bytes = dst_data->width * dst_data->bpp / 8;
+        dst_data->line_bytes  = dst_data->width * dst_data->bpp / 8;
         dst_data->total_bytes = dst_data->line_bytes * dst_data->height;
         dst_data->buf = malloc(dst_data->total_bytes);
         if(!dst_data->buf){
             DP_ERR("%s:malloc failed!\n",__func__);
             return -ENOMEM;
         }
+    }else{
+        return -1;
     }
+
+    dst_data->has_alpha = src_data->has_alpha;
+
     bytes_per_pixel = dst_data->bpp / 8;
     width = dst_data->width;
     height = dst_data->height;

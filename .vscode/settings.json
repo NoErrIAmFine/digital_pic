@@ -6,6 +6,7 @@
         "display_manager.h": "c",
         "font_render.h": "c",
         "render.h": "c",
-        "typeinfo": "c"
+        "typeinfo": "c",
+        "time.h": "c"
     }
 }

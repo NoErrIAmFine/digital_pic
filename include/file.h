@@ -27,10 +27,10 @@ struct dir_entry
     char file_type;
 };
 
-// int is_reg_file(const char*);
-// /* 常规目录是指除/sbin等几个特殊目录以外的其他的目录 */
-// int is_reg_dir(const char *);
-// int is_dir(const char *);
+int is_reg_file(const char *path,const char *name);
+/* 常规目录是指除/sbin等几个特殊目录以外的其他的目录 */
+int is_reg_dir(const char *path,const char *name);
+int is_dir(const char *path,const char *name);
 int get_dir_contents(const char *,struct dir_entry ***,unsigned int*);
 int get_pic_dir_contents(const char *file_full_name,struct dir_entry ***pic_contents,unsigned int *pic_nums,int *cur_pic_index,char **cur_dir);
 void free_dir_contents(struct dir_entry **dir_contents,unsigned int dirent_nums);

@@ -16,14 +16,6 @@
 
 static struct page_struct view_pic_page;
 
-/* 这个数组是为了方便查找picfmt_parser的 */
-const char *parser_names[] = {
-    [FILETYPE_FILE_BMP]     = "bmp",
-    [FILETYPE_FILE_JPEG]    = "jpeg",
-    [FILETYPE_FILE_PNG]     = "png",
-    [FILETYPE_FILE_GIF]     = "gif"         
-};
-
 #define MENU_ICON_HOME          0
 #define MENU_ICON_GOBACK        1
 #define MENU_ICON_PRE_PIC       2
@@ -289,7 +281,7 @@ static int prepare_menu_icon_data(struct page_struct *page)
         } 
         /* 数据是整块缓存的，要去除相应标志 */
         memset(menu_icon_datas[i].buf,0xff,menu_icon_datas[i].total_bytes);
-        ret = pic_zoom_with_same_bpp(&pixel_data,&menu_icon_datas[i]);
+        ret = pic_zoom_with_same_bpp(&menu_icon_datas[i],&pixel_data);
         if(ret){
             DP_ERR("%s:pic_zoom_with_same_bpp failed!\n",__func__);
             return -1;
@@ -337,7 +329,7 @@ static int view_pic_page_init(void)
         return ret;
     }
 
-    ret = prepare_menu_icon_data(&view_pic_page);
+    // ret = prepare_menu_icon_data(&view_pic_page);
     if(ret){
         DP_ERR("%s:prepare_menu_icon_data failed!\n",__func__);
         return -1;
@@ -381,29 +373,6 @@ static void view_pic_page_exit(void)
     }
 
     destroy_menu_icon_data();
-}
-
-/* 根据图片文件名读入相应图片的数据,此函数负责分配内存,此函数不负责缩放 */
-static int get_pic_pixel_data(const char *pic_file,char file_type,struct pixel_data *pixel_data)
-{
-    int ret;
-    struct picfmt_parser *parser;
-
-    parser = get_parser_by_name(parser_names[(int)file_type]);
-    if(!parser){
-        DP_ERR("%s:get_parser_by_name failed!\n",__func__);
-        return -1;
-    }
-   
-    ret = parser->get_pixel_data(pic_file,pixel_data);
-    if(ret){
-        DP_ERR("%s:pic parser get_pixel_data failed!\n",__func__);
-        /* 如果没获取到，就给它一张默认的表示错误的图片吧 */
-
-        return -1;
-    }
-    
-    return 0;
 }
 
 /* 将图片重置为能在屏幕上显示的大小，注意：这个函数只能对保留有原有数据的缓存使用,save_orig参数是说明是否要保留原始数据 */
@@ -466,7 +435,7 @@ static int reset_pic_cache_size(struct pic_cache *pic_cache,bool save_orig)
         pixel_data->width = zoomed_width;
         pixel_data->height = zoomed_height;
         pic_cache->angle = 0;
-        ret = pic_zoom_with_same_bpp(pic_cache->orig_data,pixel_data);
+        ret = pic_zoom_with_same_bpp(pixel_data,pic_cache->orig_data);
         if(ret < 0){
             DP_ERR("%s:pic_zoom_with_same_bpp failed!\n",__func__);
             return ret;
@@ -527,7 +496,7 @@ static int get_pic_cache_data(int pic_index,struct pic_cache **pic_cache,bool sa
     temp_cache->orig_height = pixel_data->height;
     
     /* 将读入的图片重置为能在屏幕上显示的大小,如果图片能完全被显示,那么不做改变,否则会缩放至合适大小 */
-    ret = reset_pic_cache_size(temp_cache,save_orig);DP_INFO("%d\n",__LINE__);
+    ret = reset_pic_cache_size(temp_cache,save_orig);
     if(ret < 0){
         DP_ERR("%s:reset_pic_size failed!\n",__func__);
         return -1;

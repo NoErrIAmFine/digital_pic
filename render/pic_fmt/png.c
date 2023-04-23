@@ -244,7 +244,7 @@ static int png_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
         //内存必须由此函数分配
         return -1;
     }
-   DP_INFO("line:%d\n",__LINE__);
+    DP_INFO("line:%d\n",__LINE__);
     png_read_image(png_ptr,row_pointers);
     DP_INFO("line:%d\n",__LINE__);
     png_read_end(png_ptr,info_ptr);

@@ -6,6 +6,16 @@
 #include "input_manager.h"
 #include "page_manager.h"
 #include "debug_manager.h"
+#include "picfmt_manager.h"
+#include "file.h"
+
+/* 这个数组是为了方便查找picfmt_parser的 */
+const char *parser_names[] = {
+    [FILETYPE_FILE_BMP]     = "bmp",
+    [FILETYPE_FILE_JPEG]    = "jpeg",
+    [FILETYPE_FILE_PNG]     = "png",
+    [FILETYPE_FILE_GIF]     = "gif"         
+};
 
 static struct page_struct *page_list;
 
@@ -108,6 +118,10 @@ int page_init(void)
     if((ret = view_pic_init())){
         return ret;
     }
+    
+    if((ret = autoplay_init())){
+        return ret;
+    }
     return 0;
 }
 
@@ -129,11 +143,15 @@ int get_input_event_for_page(struct page_struct *page,struct my_input_event *eve
     /* 逆序查找 */
     region += (num_regions - 1);
     for(i = 0 ; i < num_regions ; i++){
+        /* 如果区域标为不可见，直接退出 */
+        if(region->invisible){
+            continue;
+        }
         // DP_INFO("region->x_pos:%d,region->y_pos:%d,region->index:%d\n",region->x_pos,region->y_pos,region->index);
         if(region->x_pos <= event->x_pos && region->x_pos + region->width > event->x_pos && \
            region->y_pos <= event->y_pos && region->y_pos + region->height > event->y_pos){
                return region->index;
-           }
+        }
         region--;
     }
     return -1;
@@ -166,7 +184,7 @@ int flush_page_region(struct page_region *region,struct display_struct *display)
  */
 unsigned int calc_page_id(const char *name)
 {
-    unsigned int sum;
+    unsigned int sum = 0;
     int len = strlen(name);
     /* 取一个最大长度，防止意外情况 */
     if(len > 50){
@@ -272,3 +290,25 @@ int unmap_regions_to_page_mem(struct page_struct *page)
     return 0 ;
 }
 
+/* 根据图片文件名读入相应图片的数据,此函数负责分配内存,此函数不负责缩放 */
+int get_pic_pixel_data(const char *pic_file,char file_type,struct pixel_data *pixel_data)
+{
+    int ret;
+    struct picfmt_parser *parser;
+
+    parser = get_parser_by_name(parser_names[(int)file_type]);
+    if(!parser){
+        DP_ERR("%s:get_parser_by_name failed!\n",__func__);
+        return -1;
+    }
+   
+    ret = parser->get_pixel_data(pic_file,pixel_data);
+    if(ret){
+        DP_ERR("%s:pic parser get_pixel_data failed!\n",__func__);
+        /* 如果没获取到，就给它一张默认的表示错误的图片吧 */
+
+        return -1;
+    }
+    
+    return 0;
+}

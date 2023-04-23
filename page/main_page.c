@@ -313,7 +313,7 @@ static int main_page_run(struct page_param *pre_page_param)
                         //浏览目录
                         next_page = get_page_by_name("browse_page");
                         if(!next_page){
-                            DP_ERR("%s:enter browose page failed!\n",__func__);
+                            DP_ERR("%s:enter browse page failed!\n",__func__);
                             break;
                         }
                         next_page->run(&page_param);
@@ -323,9 +323,9 @@ static int main_page_run(struct page_param *pre_page_param)
                     case 2:
                     case 3:
                         //连播模式
-                        next_page = get_page_by_name("periodic_page");
+                        next_page = get_page_by_name("autoplay_page");
                         if(!next_page){
-                            DP_ERR("%s:enter browose page failed!\n",__func__);
+                            DP_ERR("%s:enter browse page failed!\n",__func__);
                             break;
                         }
                         next_page->run(&page_param);

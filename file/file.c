@@ -341,6 +341,10 @@ int get_file_type(const char *path,const char *name)
     };
     char full_name[256];
 
+    if(!path || !name){
+        return -1;
+    }
+
     ret = snprintf(full_name,256,"%s/%s",path,name);
     if(ret < 0)
         return ret;

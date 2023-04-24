@@ -93,8 +93,12 @@ static char *icon_file_names[] = {
 static struct pixel_data icon_pixel_datas[ICON_NUMS];
 
 
-/* 当前是否处于目录选择状态 */
-static bool dir_select_status = 0;
+/* 与文件夹选择相关的几个全局变量 */
+#define MAX_SELECTED_DIR 10
+static bool dir_select_status = 0;                  //标志位
+static int max_selected_dir = MAX_SELECTED_DIR;     //最多选择10个文件夹
+static char *selected_dirs[MAX_SELECTED_DIR]; //当前选中的文件夹
+static int selected_dir_num = 0;                    //当前选中的文件夹的个数
 
 /* 文件目录相关的几个全局变量 */
 static const char *const root_dir = DEFAULT_DIR;    //默认的根路径
@@ -104,31 +108,6 @@ static unsigned int cur_dirent_nums;
 static int start_file_index = 0;
 static unsigned int file_cols,file_rows,files_per_page;
 static bool dir_contents_generated = 0;
-
-/* 使能文件夹选择状态 */
-static void enable_dir_select_status(struct page_struct *browse_page,bool enable)
-{
-    struct page_region *regions = browse_page->page_layout.regions;
-    int dir_select_region_base;
-    int i;
-
-    if(!browse_page->already_layout){
-        return ;
-    }
-
-    dir_select_region_base = REGION_FILE_DIR_BASE + files_per_page * 3;
-    if(enable){
-        dir_select_status = 1;
-        for(i = 0 ; i < files_per_page ; i++){
-            regions[dir_select_region_base + i].invisible = 0;
-        }
-    }else{
-        dir_select_status = 0;
-        for(i = 0 ; i < files_per_page ; i++){
-            regions[dir_select_region_base + i].invisible = 1;
-        }
-    }
-}
 
 static int browse_page_calc_file_layout(struct page_struct *page)
 {
@@ -595,6 +574,8 @@ static int fill_menu_icon_area(struct page_struct *browse_page)
     }
 
     for(i = 0 ; i <= REGION_MENU_NEXT_PAGE ; i++){
+        /* 先清理 */
+        clear_pixel_data(regions[i].pixel_data,BACKGROUND_COLOR);
         /* 将图像数据并入到相应区域映射到的内存中 */
         if(dir_select_status){
             if(i == 0){
@@ -732,6 +713,36 @@ static void flush_menu_icon_area(struct page_struct *page)
     flush_page_region(&regions[REGION_MENU_NEXT_PAGE],display);
 }
 
+/* 使能文件夹选择状态 */
+static void enable_dir_select_status(struct page_struct *browse_page,bool enable)
+{
+    struct page_region *regions = browse_page->page_layout.regions;
+    int dir_select_region_base;
+    int i;
+
+    if(!browse_page->already_layout){
+        return ;
+    }
+
+    dir_select_region_base = REGION_FILE_DIR_BASE + files_per_page * 3;
+    if(enable){
+        dir_select_status = 1;
+        for(i = 0 ; i < files_per_page ; i++){
+            regions[dir_select_region_base + i].invisible = 0;
+        }
+    }else{
+        dir_select_status = 0;
+        for(i = 0 ; i < files_per_page ; i++){
+            regions[dir_select_region_base + i].invisible = 1;
+        }
+    }
+    clear_pixel_data(regions[REGION_MAIN_FILE_DIR].pixel_data,BACKGROUND_COLOR);
+    fill_file_dir_area(browse_page);
+    flush_file_dir_area(browse_page);
+    fill_menu_icon_area(browse_page);
+    flush_menu_icon_area(browse_page);
+}
+
 /* 用于填充各区域 */
 static int browse_page_fill_layout(struct page_struct *browse_page)
 {
@@ -864,56 +875,118 @@ static int select_menu_cb_func(void)
 
     enable_dir_select_status(&browse_page,1);
 
-    /* 重新填充区域 */
-    clear_pixel_data(regions[REGION_MAIN_FILE_DIR].pixel_data,BACKGROUND_COLOR);
-    ret = fill_file_dir_area(&browse_page);
-    if(ret){
-        DP_ERR("%s:fill_file_dir_area failed!\n",__func__);
-        return ret;
-    }
-
-    for(i = 0 ; i < 5 ; i++){
-        clear_pixel_data(regions[i].pixel_data,BACKGROUND_COLOR);
-    }
-    ret = fill_menu_icon_area(&browse_page);
-    if(ret){
-        DP_ERR("%s:fill_menu_icon_area failed!\n",__func__);
-        return ret;
-    }
-
-    /* 将更改后的内容刷新至显存 */
-    flush_file_dir_area(&browse_page);
-    flush_menu_icon_area(&browse_page);
     return 0;
 }
 
 /* 点击 “保存连播文件夹” 菜单时的回调函数 */
 static int save_autoplay_dir_menu_cb_func(void)
 {
+    struct page_struct *auto_page = get_page_by_name("autoplay_page");
+    char **auto_priv = auto_page->private_data;
+    int i,j = 0;
+
+    /* 将“连播页面”中的原有数据清除 */
+    for(i = 0 ; i < max_selected_dir ; i++){
+        if(auto_priv[i]){
+            free(auto_priv[i]);
+            auto_priv[i] = NULL;
+        }
+    }
+
+    /* 将数据保存到“连播页面”中 */
+    for(i = 0 ; i < max_selected_dir ; i++){
+        if(selected_dirs[i]){
+            auto_priv[j] = selected_dirs[i];
+            DP_DEBUG("selected dir %d:%s\n",j,auto_priv[j]);
+            j++;
+            selected_dirs[i] = NULL;
+        }
+    }
+    *(unsigned long *)&auto_priv[max_selected_dir] = j;printf("%s-%d\n",__func__,__LINE__);
+    enable_dir_select_status(&browse_page,0);printf("%s-%d\n",__func__,__LINE__);
+
     return 0;
 }
 
 /* 点击 “开始连播” 菜单时的回调函数 */
-static int start_autoplay_menu_cb_func(void)
+static int start_autoplay_menu_cb_func(int pre_page_id)
 {
-    return 0;
+    int ret;
+    struct page_struct *auto_page;
+
+    auto_page = get_page_by_name("autoplay_page");
+    if(!auto_page){
+        DP_ERR("%s:get \"autoplay_page\" failed!\n",__func__);
+        return ret;
+    }
+    /* 如果当前一个文件夹也没选择，退出文件夹选择状态，继续留在“浏览页面” */
+    if(!selected_dir_num){
+        enable_dir_select_status(&browse_page,0);
+        return 0;
+    }else{
+        /* 先保存数据 */
+        save_autoplay_dir_menu_cb_func();
+        /* 进入 autoplay page */
+        if(pre_page_id == calc_page_id("main_page")){
+            return 1;
+        }else if(pre_page_id == calc_page_id("autoplay_page")){
+            return 2;
+        }
+    }
+    return -1;
 }
 
 /* 点击"文件夹选择区域"时的回调函数 */
 static int select_dir_cb_func(int region_index)
 {
     struct page_region *regions = browse_page.page_layout.regions;
-    struct display_struct *display = get_default_display();printf("%s-%d\n",__func__,__LINE__);
+    struct display_struct *display = get_default_display();
+    unsigned int dir_index;
+    char *dir_name;
+    int i;
+
+    /* 先构造出当前所选择文件夹的名称 */
+    dir_index = start_file_index + region_index - REGION_FILE_DIR_BASE - files_per_page * 3;
+    dir_name = malloc(strlen(cur_dir) + strlen(cur_dir_contents[dir_index]->name) + 2);
+    if(!dir_name){
+        DP_ERR("%s:malloc failed!\n",__func__);
+        return -ENOMEM;
+    }
+    sprintf(dir_name,"%s/%s",cur_dir,cur_dir_contents[dir_index]->name);
+    DP_DEBUG("cur dir:%s,cur_name :%s\n",cur_dir,cur_dir_contents[dir_index]->name);
+    DP_DEBUG("cur selected dir:%s\n",dir_name);
     if(regions[region_index].selected){
+        /* 更新数据 */
         regions[region_index].selected = 0;
+        for(i = 0 ; i < max_selected_dir ; i++){
+            if(selected_dirs[i] && !strcmp(dir_name,selected_dirs[i])){
+                free(selected_dirs[i]);
+                selected_dirs[i] = NULL;
+                selected_dir_num--;
+            }
+        }
+        /* 更新图像 */
         clear_pixel_data(regions[region_index].pixel_data,BACKGROUND_COLOR);
         merge_pixel_data(regions[region_index].pixel_data,&icon_pixel_datas[ICON_DIR_UNSELECTED]);
+        flush_page_region(&regions[region_index],display);
     }else{
+        /* 更新数据 */
+        if(selected_dir_num >= max_selected_dir)    //超出上限，直接返回
+            return 0;
+        /* 在全局数组找到第一个空闲项 */
         regions[region_index].selected = 1;
+        for(i = 0 ; i < max_selected_dir ; i++){
+            if(!selected_dirs[i])
+                break;
+        }
+        selected_dirs[i] = dir_name;
+        selected_dir_num++;
+        /* 更新图像 */
         clear_pixel_data(regions[region_index].pixel_data,BACKGROUND_COLOR);
         merge_pixel_data(regions[region_index].pixel_data,&icon_pixel_datas[ICON_DIR_SELECTED]);
+        flush_page_region(&regions[region_index],display);
     }
-    flush_page_region(&regions[region_index],display);
+
     return 0;
 }
 
@@ -1076,6 +1149,7 @@ static int browse_page_run(struct page_param *pre_param)
     int pressure = 0;
     unsigned int selected_file_index;
     unsigned int dir_select_region_base = REGION_FILE_DIR_BASE + 3 * files_per_page;
+    unsigned int pre_page_id = pre_param->id;
     struct display_struct *default_display;
     struct page_region *regions;
     struct page_struct *next_page;
@@ -1209,13 +1283,24 @@ static int browse_page_run(struct page_param *pre_param)
                     case REGION_MENU_GOBACK:             /* goback */
                         if(dir_select_status){
                             save_autoplay_dir_menu_cb_func();
+                            continue;
                         }else{
                             goback_menu_cb_func();
                         }       
                         break;
                     case REGION_MENU_SELECT:             /* select */
                         if(dir_select_status){
-                            start_autoplay_menu_cb_func();
+                            ret = start_autoplay_menu_cb_func(pre_page_id);
+                            /* ret 为0不用跳转；为1要跳转，且前一个页面是主页面，直接调用run函数；
+                             * 为1要跳转，且前一个页面正是 连播页面 ，直接返回； */
+                            if(ret == 1){
+                                next_page = get_page_by_name("autoplay_page");
+                                page_param.id = browse_page.id;
+                                next_page->run(&page_param);
+                            }else if(ret == 2){
+                                return 0;
+                            }
+                            continue;
                         }else{
                             select_menu_cb_func();
                             continue;

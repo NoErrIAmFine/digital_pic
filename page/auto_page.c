@@ -4,9 +4,11 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/time.h>
 // #include <linux/time.h>
 
+#include "config.h"
 #include "page_manager.h"
 #include "display_manager.h"
 #include "debug_manager.h"
@@ -26,11 +28,11 @@ struct file_info
 /* 此页面的私有结构，用于从其他页面接收连播目录和连播间隔信息 */
 struct autoplay_private
 {
-    unsigned int autoplay_interval;
-    const char **autoplay_dirs;
+#define MAX_AUTOPLAY_DIRS 10
+    char *autoplay_dirs[MAX_AUTOPLAY_DIRS];
+    unsigned long autoplay_dir_num;
+    unsigned long autoplay_interval;
 };
-
-#define FILE_COUNT 10
 
 static struct page_struct auto_page;
 
@@ -40,12 +42,13 @@ static int autoplay_thread_exit = 0;
 
 /* 当前连播的文件信息 */
 /* 当前要连播的目录，可选择多个 */
-static const char **cur_dirs = NULL;
-// static const char *cur_dir = NULL;
+static char **cur_dirs = NULL;
+static int cur_dir_nums;
 /* 已经预读到哪个目录以及该目录下的哪个文件，注意会预读若干文件名，这两个索引是指向已经预读的文件之后的 */
 static int cur_dir_index;
 static int file_index_in_dir;
 /* 当前预读的文件信息数组 */
+#define FILE_COUNT 10
 static struct file_info cur_files[FILE_COUNT];
 static int cur_file_index;
 static int cur_file_nums;
@@ -95,16 +98,41 @@ static int auto_page_init(void)
 
 static void auto_page_exit(void)
 {
-    if(auto_page.allocated){
+    int i;
+    struct autoplay_private *auto_priv = auto_page.private_data;
+
+    if(auto_page.allocated && (!auto_page.share_fbmem)){
         free(auto_page.page_mem.buf);
         auto_page.allocated = 0;
     }
     if(auto_page.region_mapped){
         unmap_regions_to_page_mem(&auto_page);
     }
+    /* 清理缓存的文件名和文件夹名 */
+    for(i = 0 ; i < FILE_COUNT ; i++){
+        if(cur_files[i].file_name){
+            free(cur_files[i].file_name);
+        }
+        if(auto_priv->autoplay_dirs[i]){
+            free(auto_priv->autoplay_dirs[i]);
+        }
+    }
+    memset(auto_priv,0,sizeof(*auto_priv));
+    memset(cur_files,0,sizeof(cur_files));
+    cur_file_index = 0;
+    cur_file_nums = 0;
+    cur_dirs = NULL;
+    cur_dir_index = 0;
+    cur_dir_nums = 0;
+    /* 清理缓存的图片数据 */
+    if(pic_caches[0].buf)
+        free(pic_caches[0].buf);
+    if(pic_caches[1].buf)
+        free(pic_caches[1].buf);
+    memset(pic_caches,0,sizeof(pic_caches));
 }
 
-static int get_autoplay_file_infos(const char **cur_dirs,int *cur_dir_index,int *file_index_in_dir,
+static int get_autoplay_file_infos(char **cur_dirs,int *cur_dir_index,int *file_index_in_dir,
                                    struct file_info *cur_file_infos,int *cur_file_num)
 {
     int ret;
@@ -116,7 +144,7 @@ static int get_autoplay_file_infos(const char **cur_dirs,int *cur_dir_index,int 
     int round    = 0;
     int old_dir_index  = *cur_dir_index;
     int old_file_index = *file_index_in_dir;
-
+    
     while(1){
         j = 0;
         cur_dir = cur_dirs[*cur_dir_index];
@@ -162,16 +190,21 @@ static int get_autoplay_file_infos(const char **cur_dirs,int *cur_dir_index,int 
                 }
             }
         }
-
+        
         for(i = 0 ; i < origin_dir_num ; i++){
-            free(origin_dirents[i]);
+            if(origin_dirents[i])
+                free(origin_dirents[i]);
         }
-        free(origin_dirents);
-
+        if(origin_dirents){
+            free(origin_dirents);
+            origin_dirents = NULL;
+        }
+            
+        printf("%s-(*cur_dir_index)++:%d,cur_dir_nums:%d\n",__func__,(*cur_dir_index)++,cur_dir_nums);
         /* 如果找完第一个目录未找到10个图片文件，且指定了多个目录，尝试读取其他目录 */
-        if(cur_dirs[(*cur_dir_index) + 1]){
-            (void)*cur_dir_index++;
-            *file_index_in_dir = 0;
+        if(++(*cur_dir_index) < cur_dir_nums){
+            (void)(*cur_dir_index)++;
+            *file_index_in_dir = 0;printf("%s-(*cur_dir_index)++:%d,cur_dir_nums:%d\n",__func__,(*cur_dir_index)++,cur_dir_nums);
             continue;
         }else{
             /* 回绕第一个目录继续找 */
@@ -183,9 +216,13 @@ static int get_autoplay_file_infos(const char **cur_dirs,int *cur_dir_index,int 
     }
 free_origin_dirents:
     for(i = 0 ; i < origin_dir_num ; i++){
-        free(origin_dirents[i]);
+        if(origin_dirents[i])
+            free(origin_dirents[i]);
     }
-    free(origin_dirents);
+    if(origin_dirents){
+        free(origin_dirents);
+        origin_dirents = NULL;
+    }
     return ret;
 }
 
@@ -246,12 +283,18 @@ void *autoplay_thread_func(void *data)
     int ret;
     int retries;
     struct pixel_data resized_pixel_data;
-    struct timespec pre_time;
+    time_t pre_time,cur_time;
+    struct autoplay_private *auto_priv;
+    int interval;
     struct page_region *region = &auto_page.page_layout.regions[0];
     if(!cur_dirs){
         /* 数据没准备好，直接等退出把 */
         goto wait_exit;
     }
+    
+    auto_priv = auto_page.private_data;
+    interval = auto_priv->autoplay_interval;    /* 连播间隔，单位为秒 */
+
     while(1){
         /* 先判断是否要退出 */
         pthread_mutex_lock(&autoplay_thread_mutex);
@@ -259,7 +302,7 @@ void *autoplay_thread_func(void *data)
         pthread_mutex_unlock(&autoplay_thread_mutex);
         if(exit)
             return NULL;
-
+        
         /* 下一张图片的缓存准备好了吗，准备好了直接显示并更新缓存 */
         retries = 0;
         if(pic_caches[1].buf){
@@ -267,9 +310,10 @@ void *autoplay_thread_func(void *data)
             pic_caches[0] = pic_caches[1];
             memset(&pic_caches[1],0,sizeof(struct pixel_data));
             /* 显示图片 */
+            clear_pixel_data(&auto_page.page_mem,BACKGROUND_COLOR);
             merge_pixel_data_in_center(&auto_page.page_mem,&pic_caches[0]);
             /* 记录此时的时间 */
-            clock_gettime(CLOCK_MONOTONIC,&pre_time);
+            pre_time = time(NULL);
             /* 更新缓存 */
 retry1:
             if((cur_file_index += 1) >= cur_file_nums){
@@ -284,9 +328,18 @@ retry1:
                 retries++;
                 goto retry1;
             }
-            /* 缩放到合适大小，能在屏幕上显示 */
+            /* 缩放到能在屏幕上显示的大小 */
             resize_pic_pixel_data(&pic_caches[1],region->pixel_data->width,region->pixel_data->height);
+
             /* 随眠到指定时间 */
+            cur_time = time(NULL);
+            if(cur_time >= (pre_time + interval)){
+                /* 已经超时了，不用睡眠了，直接返回 */
+                continue;
+            }else{
+                sleep(pre_time + interval - cur_time);
+            }
+
         }else{
             if(cur_file_nums == 1 && pic_caches[0].buf){
                 /* 只有一张图，直接等退出把 */
@@ -307,9 +360,10 @@ retry2:
             }
             resize_pic_pixel_data(&pic_caches[0],region->pixel_data->width,region->pixel_data->height);
             /* 显示图片 */
+            clear_pixel_data(&auto_page.page_mem,BACKGROUND_COLOR);
             merge_pixel_data_in_center(&auto_page.page_mem,&pic_caches[0]);
             /* 记录此时的时间 */
-            clock_gettime(CLOCK_MONOTONIC,&pre_time);
+            pre_time = time(NULL);
             /* 缓存下一张图 */
 retry3:
             if((cur_file_index += 1) >= cur_file_nums){
@@ -327,6 +381,13 @@ retry3:
             resize_pic_pixel_data(&pic_caches[1],region->pixel_data->width,region->pixel_data->height);
 
             /* 睡眠 */
+            cur_time = time(NULL);
+            if(cur_time >= (pre_time + interval)){
+                /* 已经超时了，不用睡眠了，直接返回 */
+                continue;
+            }else{
+                sleep(pre_time + interval - cur_time);
+            }
         }
     }
 
@@ -347,7 +408,8 @@ static int auto_page_run(struct page_param *pre_param)
     struct display_struct *default_display = get_default_display();
     struct page_param param;
     struct page_struct *next_page;
-
+    struct autoplay_private *auto_priv = auto_page.private_data;
+    
     if(!auto_page.already_layout){
         auto_page_init();
     }
@@ -360,9 +422,8 @@ static int auto_page_run(struct page_param *pre_param)
         auto_page.page_mem.total_bytes = auto_page.page_mem.line_bytes * auto_page.page_mem.height; 
         auto_page.page_mem.buf         = default_display->buf;
         auto_page.allocated            = 1;
+        auto_page.share_fbmem          = 1;
     }
-    
-    /* 注意，页面布局在注册该页面时，在初始化函数中已经计算好了 */
 
     /* 将划分的显示区域映射到相应的页面对应的内存中 */
     if(!auto_page.region_mapped){
@@ -375,7 +436,7 @@ static int auto_page_run(struct page_param *pre_param)
     }
 
     /* 获取要连播的图片文件信息数组 */
-    if(!cur_dirs){
+    if(!auto_priv->autoplay_dir_num){
         /* 如果还没有指定要连播的目录，则进入“浏览页面”选择 */
         next_page = get_page_by_name("browse_page");
         if(!next_page){
@@ -386,6 +447,10 @@ static int auto_page_run(struct page_param *pre_param)
         param.id = auto_page.id;
         param.private_data = &cur_dirs;
         next_page->run(&param);
+    }else{
+        cur_dir_index = 0;
+        cur_dirs = auto_priv->autoplay_dirs;
+        cur_dir_nums = auto_priv->autoplay_dir_num;printf("%s-cur_dir_nums%d\n",__func__,cur_dir_nums);
     }
     ret = get_autoplay_file_infos(cur_dirs,&cur_dir_index,&file_index_in_dir,cur_files,&cur_file_nums);
     if(ret){
@@ -407,6 +472,15 @@ static int auto_page_run(struct page_param *pre_param)
             autoplay_thread_exit = 1;                   /* 线程函数检测到这个变量为1后会退出 */
             pthread_mutex_unlock(&autoplay_thread_mutex);
             pthread_join(autoplay_thread_id, NULL);     /* 等待子线程退出 */
+            /* 进入图片浏览页面 */
+            next_page = get_page_by_name("view_pic_page");
+            param.id = calc_page_id("autoplay_page");
+            param.private_data = cur_files[cur_file_index].file_name;
+            cur_files[cur_file_index].file_name = NULL;
+            /* 清理该页面用到的资源 */
+            auto_page_exit();
+            /* 进入“查看图片”页面 */
+            next_page->run(&param);
             return 0;
         }
     }
@@ -415,6 +489,8 @@ static int auto_page_run(struct page_param *pre_param)
 
 static struct autoplay_private auto_priv = {
     .autoplay_interval = 3,             /* 默认间隔设为3s */
+    .autoplay_dirs = {0},
+    .autoplay_dir_num = 0,
 };
 
 static struct page_struct auto_page = {

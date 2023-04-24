@@ -22,8 +22,6 @@ struct page_region
     int level;
     /* 为该区域取一个名字 */
     const char *name;
-    /* 若该区域对应一个资源文件，file_name 为文件名 */
-    const char *file_name;
     /* 该区域所对应的数据所在的内存位置，不是必需的 */
     struct pixel_data *pixel_data;
     /* 该区域所属的页布局 */
@@ -69,6 +67,8 @@ struct page_struct
     void *private_data;
     /* 是否已分配内存 */
     unsigned int allocated:1;
+    /* 是否与显存共享一块内存 */
+    unsigned int share_fbmem:1;
     /* 是否已计算好布局 */
     unsigned int already_layout:1;
     /* 区域已映射到内存 */

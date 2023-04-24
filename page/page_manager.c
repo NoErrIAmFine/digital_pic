@@ -145,6 +145,7 @@ int get_input_event_for_page(struct page_struct *page,struct my_input_event *eve
     for(i = 0 ; i < num_regions ; i++){
         /* 如果区域标为不可见，直接退出 */
         if(region->invisible){
+            region--;
             continue;
         }
         // DP_INFO("region->x_pos:%d,region->y_pos:%d,region->index:%d\n",region->x_pos,region->y_pos,region->index);
@@ -285,6 +286,7 @@ int unmap_regions_to_page_mem(struct page_struct *page)
             free(regions[i].pixel_data->rows_buf);
         }
         free(regions[i].pixel_data);
+        regions[i].pixel_data = NULL;
     }
     page->region_mapped = 0;
     return 0 ;

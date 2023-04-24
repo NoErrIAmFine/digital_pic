@@ -217,7 +217,7 @@ static int view_pic_page_calc_layout(struct page_struct *page)
 }
 
 /* 很遗憾，这个函数要求图标长宽必须相同，否则会出现什么我也不确定 */
-/* 注意,此函数执行完后会将图标缩放至和是大小,但bpp是与原图像一致的,在合并时需要注意 */
+/* 注意,此函数执行完后会将图标缩放至合适大小,但bpp是与原图像一致的,在合并时需要注意 */
 static int prepare_menu_icon_data(struct page_struct *page)
 {
     int i,ret;
@@ -1417,6 +1417,7 @@ static int view_pic_page_run(struct page_param *pre_page_param)
     unsigned short distance;
     struct display_struct *default_display;
     struct page_region *regions;
+    unsigned int pre_page_id = pre_page_param->id;
     DP_ERR("enter:%s\n",__func__);
     /* 为该页面分配一块内存 */
     if(!view_pic_page.allocated){

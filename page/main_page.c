@@ -12,6 +12,63 @@
 
 static struct page_struct main_page;
 
+/* 区域的宏定义 */
+#define REGION_BROWSE_ICON      0
+#define REGION_BROWSE_TEXT      1
+#define REGION_AUTOPLAY_ICON    2
+#define REGION_AUTOPLAY_TEXT    3
+#define REGION_SETTING_ICON     4   
+#define REGION_SETTING_TEXT     5
+
+/* 以下是本页面要用到的图标信息 */
+enum icon_info{
+    ICON_BROWSE_MODE = 0,
+    ICON_AUTO_PLAY_MODE,
+    ICON_SETTING,
+    ICON_NUMS,
+};
+/* 图标文件名字符串数组 */
+static const char *icon_file_names[] = {
+    [ICON_BROWSE_MODE]      = "browse_mode.png",
+    [ICON_AUTO_PLAY_MODE]   = "periodic_mode.png",
+    [ICON_SETTING]          = "setting.png",
+};
+static struct pixel_data icon_pixel_datas[ICON_NUMS];
+
+static int prepare_icon_pixel_datas(struct page_struct *main_page)
+{
+    int i,ret;
+    struct page_region *regions = main_page->page_layout.regions;
+    struct pixel_data temp;
+
+    if(main_page->icon_prepared){
+        return 0;
+    }
+
+    /* 获取初始数据 */
+    ret = get_icons_pixel_data(icon_pixel_datas,icon_file_names,ICON_NUMS);
+    if(ret){
+        DP_ERR("%s:get_icons_pixel_data failed\n",__func__);
+        return ret;
+    }
+
+    /* 缩放至合适大小,考虑到本页面用到的图标大小都相同，直接用循环不挨个赋值了 */
+    for(i = 0 ; i < ICON_NUMS ; i++){
+        memset(&temp,0,sizeof(struct pixel_data));
+        temp.width  = regions[REGION_BROWSE_ICON].width;
+        temp.height = regions[REGION_BROWSE_ICON].height;
+        ret = pic_zoom_with_same_bpp(&temp,&icon_pixel_datas[i]);
+        if(ret){
+            DP_ERR("%s:pic_zoom_with_same_bpp failed\n",__func__);
+            return ret;
+        }
+        free(icon_pixel_datas[i].buf);
+        icon_pixel_datas[i] = temp;
+    }
+    main_page->icon_prepared = 1;
+    return 0;
+}
+
 /* 在此函数中将会计算好页面的布局情况 */
 static int main_page_init(void)
 {
@@ -47,79 +104,80 @@ static int main_page_init(void)
         y_cursor = unit_distance / 2;
         x_cursor = (width - unit_distance * 4) / 2;
         /* "浏览模式"图标和文本 */
-        regions[0].x_pos = x_cursor;
-        regions[0].y_pos = y_cursor;
-        regions[0].height = unit_distance;
-        regions[0].width = unit_distance;
+        regions[REGION_BROWSE_ICON].x_pos = x_cursor;
+        regions[REGION_BROWSE_ICON].y_pos = y_cursor;
+        regions[REGION_BROWSE_ICON].height = unit_distance;
+        regions[REGION_BROWSE_ICON].width = unit_distance;
 
-        regions[1].x_pos = x_cursor + unit_distance;
-        regions[1].y_pos = y_cursor;
-        regions[1].height = unit_distance;
-        regions[1].width = unit_distance * 3;
+        regions[REGION_BROWSE_TEXT].x_pos = x_cursor + unit_distance;
+        regions[REGION_BROWSE_TEXT].y_pos = y_cursor;
+        regions[REGION_BROWSE_TEXT].height = unit_distance;
+        regions[REGION_BROWSE_TEXT].width = unit_distance * 3;
 
         /* "连播模式"图标和文本 */
         y_cursor += unit_distance * 3 / 2;
-        regions[2].x_pos = x_cursor;
-        regions[2].y_pos = y_cursor;
-        regions[2].height = unit_distance;
-        regions[2].width = unit_distance;
+        regions[REGION_AUTOPLAY_ICON].x_pos = x_cursor;
+        regions[REGION_AUTOPLAY_ICON].y_pos = y_cursor;
+        regions[REGION_AUTOPLAY_ICON].height = unit_distance;
+        regions[REGION_AUTOPLAY_ICON].width = unit_distance;
 
-        regions[3].x_pos = x_cursor + unit_distance;
-        regions[3].y_pos = y_cursor;
-        regions[3].height = unit_distance;
-        regions[3].width = unit_distance * 3;
+        regions[REGION_AUTOPLAY_TEXT].x_pos = x_cursor + unit_distance;
+        regions[REGION_AUTOPLAY_TEXT].y_pos = y_cursor;
+        regions[REGION_AUTOPLAY_TEXT].height = unit_distance;
+        regions[REGION_AUTOPLAY_TEXT].width = unit_distance * 3;
 
         /* "设置"图标和文本 */
          y_cursor += unit_distance * 3 / 2;
-        regions[4].x_pos = x_cursor;
-        regions[4].y_pos = y_cursor;
-        regions[4].height = unit_distance;
-        regions[4].width = unit_distance;
+        regions[REGION_SETTING_ICON].x_pos = x_cursor;
+        regions[REGION_SETTING_ICON].y_pos = y_cursor;
+        regions[REGION_SETTING_ICON].height = unit_distance;
+        regions[REGION_SETTING_ICON].width = unit_distance;
 
-        regions[5].x_pos = x_cursor + unit_distance;
-        regions[5].y_pos = y_cursor;
-        regions[5].height = unit_distance;
-        regions[5].width = unit_distance * 3;
+        regions[REGION_SETTING_TEXT].x_pos = x_cursor + unit_distance;
+        regions[REGION_SETTING_TEXT].y_pos = y_cursor;
+        regions[REGION_SETTING_TEXT].height = unit_distance;
+        regions[REGION_SETTING_TEXT].width = unit_distance * 3;
     }else{
         /* 横屏 */
         unit_distance = width / 6;
         y_cursor = (height - unit_distance * 4) / 2;
         x_cursor = (width - unit_distance * 4) / 2;
         /* "浏览模式"图标和文本 */
-        regions[0].x_pos = x_cursor;
-        regions[0].y_pos = y_cursor;
-        regions[0].height = unit_distance;
-        regions[0].width = unit_distance;
+        regions[REGION_BROWSE_ICON].x_pos = x_cursor;
+        regions[REGION_BROWSE_ICON].y_pos = y_cursor;
+        regions[REGION_BROWSE_ICON].height = unit_distance;
+        regions[REGION_BROWSE_ICON].width = unit_distance;
 
-        regions[1].x_pos = x_cursor + unit_distance;
-        regions[1].y_pos = y_cursor;
-        regions[1].height = unit_distance;
-        regions[1].width = unit_distance * 3;
+        regions[REGION_BROWSE_TEXT].x_pos = x_cursor + unit_distance;
+        regions[REGION_BROWSE_TEXT].y_pos = y_cursor;
+        regions[REGION_BROWSE_TEXT].height = unit_distance;
+        regions[REGION_BROWSE_TEXT].width = unit_distance * 3;
 
         /* "连播模式"图标和文本 */
         y_cursor += unit_distance * 2;
-        regions[2].x_pos = x_cursor;
-        regions[2].y_pos = y_cursor;
-        regions[2].height = unit_distance;
-        regions[2].width = unit_distance;
+        regions[REGION_AUTOPLAY_ICON].x_pos = x_cursor;
+        regions[REGION_AUTOPLAY_ICON].y_pos = y_cursor;
+        regions[REGION_AUTOPLAY_ICON].height = unit_distance;
+        regions[REGION_AUTOPLAY_ICON].width = unit_distance;
 
-        regions[3].x_pos = x_cursor + unit_distance;
-        regions[3].y_pos = y_cursor;
-        regions[3].height = unit_distance;
-        regions[3].width = unit_distance * 3;
+        regions[REGION_AUTOPLAY_TEXT].x_pos = x_cursor + unit_distance;
+        regions[REGION_AUTOPLAY_TEXT].y_pos = y_cursor;
+        regions[REGION_AUTOPLAY_TEXT].height = unit_distance;
+        regions[REGION_AUTOPLAY_TEXT].width = unit_distance * 3;
 
         /* "设置"图标和文本 */
          y_cursor += unit_distance * 2;
-        regions[4].x_pos = x_cursor;
-        regions[4].y_pos = y_cursor;
-        regions[4].height = unit_distance;
-        regions[4].width = unit_distance;
+        regions[REGION_SETTING_ICON].x_pos = x_cursor;
+        regions[REGION_SETTING_ICON].y_pos = y_cursor;
+        regions[REGION_SETTING_ICON].height = unit_distance;
+        regions[REGION_SETTING_ICON].width = unit_distance;
 
-        regions[5].x_pos = x_cursor + unit_distance;
-        regions[5].y_pos = y_cursor;
-        regions[5].height = unit_distance;
-        regions[5].width = unit_distance * 3;
+        regions[REGION_SETTING_TEXT].x_pos = x_cursor + unit_distance;
+        regions[REGION_SETTING_TEXT].y_pos = y_cursor;
+        regions[REGION_SETTING_TEXT].height = unit_distance;
+        regions[REGION_SETTING_TEXT].width = unit_distance * 3;
     }
+    main_page.already_layout = 1;
     return 0;
 }
 
@@ -164,85 +222,83 @@ static int remap_region_to_page_mem(struct page_region *region,struct page_struc
     return 0;
 }
 
+/* 此函数填充此页面布局内的内容 */
 static int main_page_fill_layout(struct page_struct *main_page)
 {
-    /* 此函数填充布局内的内容 */
-    FILE *png_file;
     int i,ret;
     int region_num = main_page->page_layout.region_num;
     struct page_region *regions = main_page->page_layout.regions;
-    struct pixel_data pixel_data;
-    struct picfmt_parser *png_parser = get_parser_by_name("png");
-    char *file_name;
-    char file_path[] = DEFAULT_ICON_FILE_PATH;
-    char file_full_path[100];
-
-    /* 如果想加个整体的背景，应该最先加进去 */
-    //。。。
-
-    /* 挨个填充 */
-    /* 为每个region分配一个pixel_data，以指示该区域的显示数据应放置到哪里 */
-    for(i = 0 ; i < region_num ; i++){
-        regions[i].pixel_data = malloc(sizeof(struct pixel_data));
-        if(!regions[i].pixel_data){
-            DP_ERR("%s:malloc failed\n",__func__);
-            return -1;
-        }
-        /* 将每个region对应的内存位置直接映射到该page对应的内存中的相应位置 */
-        ret = remap_region_to_page_mem(&regions[i],main_page);
-        if(ret){
-            DP_ERR("%s:remap region mem failed!\n",__func__);
-            return -1;
-        }
-    }
+    struct pixel_data temp;
+    struct display_struct *default_display = get_default_display();
     
-    /* 先填充三个图标 */
-    memset(&pixel_data,0,sizeof(pixel_data));
-    for(i = 0 ; i < 3 ; i++){
-        int file_name_malloc = 0;
-        if((strlen(file_path) + strlen(regions[i * 2].file_name) + 1) > 99){
-            file_name = malloc(strlen(file_path) + strlen(regions[i * 2].file_name) + 2);
-            if(!file_name){
-                DP_ERR("%s:malloc failed!\n");
-                return -ENOMEM;
-            }
-            sprintf(file_name,"%s/%s",file_path,regions[i * 2].file_name);
-            file_name_malloc = 1;
-        }else{
-            sprintf(file_full_path,"%s/%s",file_path,regions[i * 2].file_name);
-        }
-        
-        if(file_name_malloc){
-            png_parser->get_pixel_data_in_rows(file_name,&pixel_data);
-        }else{
-            png_parser->get_pixel_data_in_rows(file_full_path,&pixel_data);
-        }
-        
-        ret = pic_zoom_and_merge(&pixel_data,regions[i * 2].pixel_data);
+    if(!main_page->already_layout){
+        main_page_init();
+    }
 
+    if(!main_page->allocated){
+        /* 直接将 auto page 对应的内存映射到显存上，省的多一道复制 */
+        main_page->page_mem.bpp         = default_display->bpp;
+        main_page->page_mem.width       = default_display->xres;
+        main_page->page_mem.height      = default_display->yres;
+        main_page->page_mem.line_bytes  = main_page->page_mem.width * main_page->page_mem.bpp / 8;
+        main_page->page_mem.total_bytes = main_page->page_mem.line_bytes * main_page->page_mem.height; 
+        main_page->page_mem.buf         = default_display->buf;
+        main_page->allocated            = 1;
+        main_page->share_fbmem          = 1;
+    }
+    clear_pixel_data(&main_page->page_mem,BACKGROUND_COLOR);
+
+    /* 将划分的显示区域映射到相应的页面对应的内存中 */
+    if(!main_page->region_mapped){
+        ret = remap_regions_to_page_mem(main_page);
         if(ret){
-            DP_ERR("%s:pic_zoom_and_merge_in_rows failed!\n",__func__);
-            return -1;
-        }
-        if(file_name_malloc){
-            free(file_name);
+            DP_ERR("%s:remap_regions_to_page_mem failed!\n",__func__);
+            return ret;
         }
     }
-    /* 释放由png解析函数分配的内存 */
-    for(i = 0 ; i < pixel_data.height ; i++){
-        free(pixel_data.rows_buf[i]);
+
+    /* 准备图标数据 */
+    if(!main_page->icon_prepared){
+        ret = prepare_icon_pixel_datas(main_page);
+        if(ret){
+            DP_ERR("%s:prepare_icon_pixel_datas failed!\n",__func__);
+            return ret;
+        }
     }
-    free(pixel_data.rows_buf);
+
+    /* 挨个填充各个区域 */ 
+    /* 先填充三个图标 */
+    ret = clear_pixel_data(regions[REGION_BROWSE_ICON].pixel_data,BACKGROUND_COLOR);
+    ret |= merge_pixel_data(regions[REGION_BROWSE_ICON].pixel_data,&icon_pixel_datas[ICON_BROWSE_MODE]);
+    if(ret){
+        DP_ERR("%s:fill icon region failed!\n",__func__);
+        return ret;
+    }
+
+    ret = clear_pixel_data(regions[REGION_AUTOPLAY_ICON].pixel_data,BACKGROUND_COLOR);
+    ret |= merge_pixel_data(regions[REGION_AUTOPLAY_ICON].pixel_data,&icon_pixel_datas[ICON_AUTO_PLAY_MODE]);
+    if(ret){
+        DP_ERR("%s:fill icon region failed!\n",__func__);
+        return ret;
+    }
+
+    ret = clear_pixel_data(regions[REGION_SETTING_ICON].pixel_data,BACKGROUND_COLOR);
+    ret |= merge_pixel_data(regions[REGION_SETTING_ICON].pixel_data,&icon_pixel_datas[ICON_SETTING]);
+    if(ret){
+        DP_ERR("%s:fill icon region failed!\n",__func__);
+        return ret;
+    }
     
     /* 再填充三段文本 */
     /* 浏览目录;连播模式;设置 */
-    get_string_bitamp_from_buf("浏览目录",0,"utf-8",regions[1].pixel_data,FONT_ALIGN_HORIZONTAL_CENTER,0xff00,60);
-    get_string_bitamp_from_buf("连播模式",0,"utf-8",regions[3].pixel_data,FONT_ALIGN_HORIZONTAL_CENTER,0xff00,60);
-    get_string_bitamp_from_buf("设    置",0,"utf-8",regions[5].pixel_data,FONT_ALIGN_HORIZONTAL_CENTER,0xff00,60);
+    get_string_bitamp_from_buf("浏览目录",0,"utf-8",regions[REGION_BROWSE_TEXT].pixel_data,FONT_ALIGN_HORIZONTAL_CENTER,0xff00,60);
+    get_string_bitamp_from_buf("连播模式",0,"utf-8",regions[REGION_AUTOPLAY_TEXT].pixel_data,FONT_ALIGN_HORIZONTAL_CENTER,0xff00,60);
+    get_string_bitamp_from_buf("设    置",0,"utf-8",regions[REGION_SETTING_TEXT].pixel_data,FONT_ALIGN_HORIZONTAL_CENTER,0xff00,60);
 
     return 0;
 }
 
+/* 主要功能：分配内存；解析要显示的数据；while循环检测输入*/
 static int main_page_run(struct page_param *pre_page_param)
 {
     int ret;
@@ -250,35 +306,54 @@ static int main_page_run(struct page_param *pre_page_param)
     int region_index;
     int slot_id = -1;
     int pressure = 0;
-    struct display_struct *default_display;
-    struct page_region *regions;
+    struct display_struct *default_display = get_default_display();
+    struct page_region *regions = main_page.page_layout.regions;
     struct page_struct *next_page;
     struct page_param page_param;
 
-    /* 主要功能：分配内存；解析要显示的数据；while循环检测输入*/
+    if(!main_page.already_layout){
+        main_page_init();
+    }
+
     if(!main_page.allocated){
-        main_page.page_mem.buf = malloc(main_page.page_mem.total_bytes);
-        if(!main_page.page_mem.buf){
-            DP_ERR("%s:malloc failed!\n",__func__);
-            return -1;
+        /* 直接将 auto page 对应的内存映射到显存上，省的多一道复制 */
+        main_page.page_mem.bpp         = default_display->bpp;
+        main_page.page_mem.width       = default_display->xres;
+        main_page.page_mem.height      = default_display->yres;
+        main_page.page_mem.line_bytes  = main_page.page_mem.width * main_page.page_mem.bpp / 8;
+        main_page.page_mem.total_bytes = main_page.page_mem.line_bytes * main_page.page_mem.height; 
+        main_page.page_mem.buf         = default_display->buf;
+        main_page.allocated            = 1;
+        main_page.share_fbmem          = 1;
+    }
+
+    /* 将划分的显示区域映射到相应的页面对应的内存中 */
+    if(!main_page.region_mapped){
+        ret = remap_regions_to_page_mem(&main_page);
+        if(ret){
+            DP_ERR("%s:remap_regions_to_page_mem failed!\n",__func__);
+            return ret;
         }
-        main_page.allocated = 1;
+    }
+
+    /* 准备图标数据 */
+    if(!main_page.icon_prepared){
+        ret = prepare_icon_pixel_datas(&main_page);
+        if(ret){
+            DP_ERR("%s:prepare_icon_pixel_datas failed!\n",__func__);
+            return ret;
+        }
     }
     
-    default_display = get_default_display();
-    // default_display->clear_buf(default_display,0xffff);
-    clear_pixel_data(&main_page.page_mem,0xffff);
+    /* 填充页面 */
     ret = main_page_fill_layout(&main_page);
     if(ret){
         DP_ERR("%s:main_page_fill_layout failed!\n",__func__);
-        return -1;
+        return ret;
     }   
     
-    // default_display = get_default_display();
+    /* 因为页面与显存共享一块内存，所以不用刷新 */
     
-    default_display->flush_buf(default_display,main_page.page_mem.buf,main_page.page_mem.total_bytes);
-    
-    regions = main_page.page_layout.regions;
     /* 检测输入事件的循环 */
     while(1){
         struct my_input_event event;
@@ -318,8 +393,12 @@ static int main_page_run(struct page_param *pre_page_param)
                         }
                         next_page->run(&page_param);
                         /* 返回后重新渲染此页 */
-                        default_display->flush_buf(default_display,main_page.page_mem.buf,main_page.page_mem.total_bytes);
-                        break;
+                        ret = main_page_fill_layout(&main_page);
+                        if(ret){
+                            DP_ERR("%s:main_page_fill_layout failed!\n",__func__);
+                            return ret;
+                        } 
+                        continue;
                     case 2:
                     case 3:
                         //连播模式
@@ -330,8 +409,12 @@ static int main_page_run(struct page_param *pre_page_param)
                         }
                         next_page->run(&page_param);
                         /* 返回后重新渲染此页 */
-                        default_display->flush_buf(default_display,main_page.page_mem.buf,main_page.page_mem.total_bytes);
-                        break;
+                         ret = main_page_fill_layout(&main_page);
+                        if(ret){
+                            DP_ERR("%s:main_page_fill_layout failed!\n",__func__);
+                            return ret;
+                        } 
+                        continue;
                     case 4:
                     case 5:
                         //设置
@@ -359,12 +442,12 @@ static int main_page_run(struct page_param *pre_page_param)
 }
 
 static struct page_region main_page_regions[] = {
-    PAGE_REGION(0,0,"browse_mode_icon","browse_mode.png"),
-    PAGE_REGION(1,0,"browse_mode_text",0),
-    PAGE_REGION(2,0,"periodic_mode_icon","periodic_mode.png"),
-    PAGE_REGION(3,0,"periodic_mode_text",0),
-    PAGE_REGION(4,0,"setting_mode_icon","setting.png"),
-    PAGE_REGION(5,0,"setting_mode_text",0),
+    PAGE_REGION(0,0,"browse_mode_icon",&main_page),
+    PAGE_REGION(1,0,"browse_mode_text",&main_page),
+    PAGE_REGION(2,0,"periodic_mode_icon",&main_page),
+    PAGE_REGION(3,0,"periodic_mode_text",&main_page),
+    PAGE_REGION(4,0,"setting_mode_icon",&main_page),
+    PAGE_REGION(5,0,"setting_mode_text",&main_page),
 };
 
 static struct page_struct main_page = {

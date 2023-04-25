@@ -9,15 +9,15 @@
 #include "picfmt_manager.h"
 #include "file.h"
 
+static struct page_struct *page_list;
+
 /* 这个数组是为了方便查找picfmt_parser的 */
-const char *parser_names[] = {
+static const char *parser_names[] = {
     [FILETYPE_FILE_BMP]     = "bmp",
     [FILETYPE_FILE_JPEG]    = "jpeg",
     [FILETYPE_FILE_PNG]     = "png",
-    [FILETYPE_FILE_GIF]     = "gif"         
+    [FILETYPE_FILE_GIF]     = "gif",         
 };
-
-static struct page_struct *page_list;
 
 int register_page_struct(struct page_struct *page)
 {
@@ -106,7 +106,7 @@ void show_page_struct(void)
 int page_init(void)
 {
     int ret;
-
+    // 
     if((ret = main_init())){
         return ret;
     }
@@ -120,6 +120,14 @@ int page_init(void)
     }
     
     if((ret = autoplay_init())){
+        return ret;
+    }
+
+    if((ret = setting_init())){
+        return ret;
+    }
+
+    if((ret = interval_init())){
         return ret;
     }
     return 0;
@@ -165,13 +173,17 @@ int flush_page_region(struct page_region *region,struct display_struct *display)
 {
     int ret;
     struct display_region display_region;
-
+    
+    /* 如果页面是和显存共享同一块内存，那还刷个毛，直接退出 */
+    if(region->owner_page->share_fbmem)
+        return 0;
+    
     display_region.x_pos   = region->x_pos;
     display_region.y_pos   = region->y_pos;
     display_region.width   = region->pixel_data->width;
     display_region.height  = region->pixel_data->height;
     display_region.data    = region->pixel_data;
-
+    
     ret = display->merge_region(display,&display_region);
     if(ret < 0){
         DP_ERR("%s:merge region to display failed!\n",__func__);
@@ -255,15 +267,16 @@ int remap_regions_to_page_mem(struct page_struct *page)
         DP_WARNING("%s:map unallocated page mem!\n",__func__);
         return -1;
     }
-    
+    if(page->region_mapped){
+        return 0;
+    }
+
     for(i = 0 ; i < layout->region_num ; i++){
         ret = remap_region_to_page_mem(page,&regions[i]);
         if(ret){
             DP_ERR("%s:remap_region_to_page_mem error!\n",__func__);
             return ret;
         }
-        
-        regions[i].page_layout = layout;
     }
     page->region_mapped = 1;
 
@@ -312,5 +325,116 @@ int get_pic_pixel_data(const char *pic_file,char file_type,struct pixel_data *pi
         return -1;
     }
     
+    return 0;
+}
+
+/* 准备图标数据，只支持png格式文件，将图标原样读出，不进行缩放 */
+int get_icons_pixel_data(struct pixel_data *icon_datas,const char **icon_names,int icon_num)
+{
+    int i,j,ret;
+    struct picfmt_parser *png_parser = get_parser_by_name("png");
+    const char file_path[] = DEFAULT_ICON_FILE_PATH;
+    char file_full_path[100];
+
+    for(i = 0 ; i < icon_num ; i++){
+        char *file_name;
+        int file_name_malloc = 0;
+       
+        /* 如果没有指定文件，直接跳过 */
+        if(!icon_names[i]){
+            continue;
+        }
+        /* 构造文件名，为了预防文件名过长导致出错,虽然这发生的概率极小 */
+        if((strlen(file_path) + strlen(icon_names[i]) + 1) > 99){
+            file_name = malloc(strlen(file_path) + strlen(icon_names[i]) + 2);
+            if(!file_name){
+                DP_ERR("%s:malloc failed!\n");
+                goto free_icon_data;
+            }
+            sprintf(file_name,"%s/%s",file_path,icon_names[i]);
+            file_name_malloc = 1;
+        }else{
+            sprintf(file_full_path,"%s/%s",file_path,icon_names[i]);
+        }
+    
+        memset(&icon_datas[i],0,sizeof(struct pixel_data));
+        if(file_name_malloc){
+            ret = png_parser->get_pixel_data_in_rows(file_name,&icon_datas[i]);
+        }else{
+            ret = png_parser->get_pixel_data_in_rows(file_full_path,&icon_datas[i]);
+        } 
+        if(ret){
+            // if(ret == -2){
+            //     //to-do 此种错误是可修复的 
+            // }
+            DP_ERR("%s:get icon pixel data failed!\n",__func__);
+            goto free_icon_data;
+        } 
+        
+        if(file_name_malloc){
+            free(file_name);
+        }
+    }
+    return 0; 
+
+free_icon_data:
+    for(i-- ; i > 0 ; i--){
+        if(icon_datas[i].buf){
+            free(icon_datas[i].buf);
+        }else if(icon_datas[i].rows_buf){
+            free(icon_datas[i].rows_buf);
+        }
+        memset(&icon_datas[i],0,sizeof(struct pixel_data));
+    }
+    return ret;
+}
+
+int invert_region(struct pixel_data *pixel_data)
+{   
+    unsigned short *line_buf;
+    unsigned int width,height;
+    unsigned int i,j;
+    /* 暂只处理16bpp */
+    if(16 == pixel_data->bpp){
+        width = pixel_data->width;
+        height = pixel_data->height;
+        for(i = 0 ; i < height ; i++){
+            /* 根据数据的不同储存方式获取行起始处指针 */
+            if(pixel_data->in_rows){
+                line_buf = (unsigned short *)pixel_data->rows_buf[i];
+            }else{
+                line_buf = (unsigned short *)pixel_data->buf + pixel_data->line_bytes * i;
+            }
+            for(j = 0 ; j < width ; j++){
+                *line_buf = ~(*line_buf);
+                line_buf++;
+            }
+        }
+        return 0;
+    }else{
+        DP_INFO("%s:unsupported bpp!\n",__func__);
+        return -1;
+    }
+}
+
+/* @description : 对指定区域施加某种效果表示该区域被按下，比如反转该区域的颜色
+ * @param : region - 被按下的区域
+ * @param : press - 1表示按下，0表示松开
+ * @param : pattern - 用于表示按下状态的样式，比如反转颜色、变灰、加个框等，现在该参数无效 */
+int press_region(struct page_region *region,int press,int pattern)
+{   
+    if(press){
+        if(region->pressed){
+            return 0;       //如果已被按下，什么也不用做
+        }
+        region->pressed = 1;
+        invert_region(region->pixel_data);
+    }else{
+        if(!region->pressed){
+            return 0;       //如果已是松开状态，什么也不用做
+        }
+        region->pressed = 0;
+        invert_region(region->pixel_data);
+    }
     return 0;
 }

@@ -16,19 +16,6 @@
 
 static struct page_struct view_pic_page;
 
-#define MENU_ICON_HOME          0
-#define MENU_ICON_GOBACK        1
-#define MENU_ICON_PRE_PIC       2
-#define MENU_ICON_NEXT_PIC      3
-#define MENU_ICON_UNFOLD        4
-#define MENU_ICON_ZOOM_IN       5
-#define MENU_ICON_ZOOM_OUT      6
-#define MENU_ICON_LEFT_ROTATE   7
-#define MENU_ICON_RIGHT_ROTATE  8
-#define MENU_ICON_PIC_RESET     9
-#define MENU_ICON_FOLD          10
-#define MENU_ICON_NUMS          11
-
 #define REGION_MENU_HOME            0
 #define REGION_MENU_GOBACK          1
 #define REGION_MENU_PRE_PIC         2
@@ -46,21 +33,36 @@ static struct page_struct view_pic_page;
 
 static short min_drag_distance = MIN_DRAG_DISTANCE;
 
-/* 图标名称数组 */
-static char *menu_icon_files[MENU_ICON_NUMS] = {
-    [MENU_ICON_HOME]            = "home.png",
-    [MENU_ICON_GOBACK]          = "goback.png",
-    [MENU_ICON_PRE_PIC]         = "pre_pic.png",
-    [MENU_ICON_NEXT_PIC]        = "next_pic.png",
-    [MENU_ICON_UNFOLD]          = "unfold.png",
-    [MENU_ICON_ZOOM_IN]         = "zoom_in.png",
-    [MENU_ICON_ZOOM_OUT]        = "zoom_out.png",
-    [MENU_ICON_LEFT_ROTATE]     = "left_rotate.png",
-    [MENU_ICON_RIGHT_ROTATE]    = "right_rotate.png",
-    [MENU_ICON_PIC_RESET]       = "pic_reset.png",
-    [MENU_ICON_FOLD]            = "fold.png",
+/* 本页面用到的图标信息 */
+enum icon_info{
+    ICON_MENU_HOME = 0,       
+    ICON_MENU_GOBACK,     
+    ICON_MENU_PRE_PIC,      
+    ICON_MENU_NEXT_PIC,     
+    ICON_MENU_UNFOLD, 
+    ICON_MENU_FOLD,      
+    ICON_MENU_ZOOM_IN,      
+    ICON_MENU_ZOOM_OUT,     
+    ICON_MENU_LEFT_ROTATE,  
+    ICON_MENU_RIGHT_ROTATE, 
+    ICON_MENU_PIC_RESET,         
+    ICON_NUMS, 
 };
-static struct pixel_data menu_icon_datas[MENU_ICON_NUMS];
+/* 图标名称数组 */
+static const char *icon_file_names[ICON_NUMS] = {
+    [ICON_MENU_HOME]            = "home.png",
+    [ICON_MENU_GOBACK]          = "goback.png",
+    [ICON_MENU_PRE_PIC]         = "pre_pic.png",
+    [ICON_MENU_NEXT_PIC]        = "next_pic.png",
+    [ICON_MENU_UNFOLD]          = "unfold.png",
+    [ICON_MENU_ZOOM_IN]         = "zoom_in.png",
+    [ICON_MENU_ZOOM_OUT]        = "zoom_out.png",
+    [ICON_MENU_LEFT_ROTATE]     = "left_rotate.png",
+    [ICON_MENU_RIGHT_ROTATE]    = "right_rotate.png",
+    [ICON_MENU_PIC_RESET]       = "pic_reset.png",
+    [ICON_MENU_FOLD]            = "fold.png",
+};
+static struct pixel_data icon_pixel_datas[ICON_NUMS];
 
 /* 表示展开菜单的状态，是展开还是折叠状态 */
 static int menu_unfolded = 0;
@@ -117,16 +119,15 @@ static int view_pic_page_calc_layout(struct page_struct *page)
     layout->regions = regions;
     
     /* 一些与位置无关的成员在外面先填充了 */
-    for(i = 0 ; i < 10 ; i++){
+    for(i = 0 ; i < 11 ; i++){
         regions[i].index = i;
-        regions->file_name = menu_icon_files[i];
         if(i > 5){
             /* 这几个区域level为1(从0开始),因为它是在其他区域之上的 */
             regions->level = 1;
         }else{
             regions[i].level = 0;
         }
-        regions[i].page_layout = layout;
+        regions[i].owner_page = page;
     }
     regions[i].index = i;
     regions[i].level = 0;
@@ -145,35 +146,14 @@ static int view_pic_page_calc_layout(struct page_struct *page)
         unit_distance = height / 5;
         y_cursor = 0;
         x_cursor = 0;
-        /* "home" */
-        regions[0].x_pos    = x_cursor;
-        regions[0].y_pos    = y_cursor;
-        regions[0].height   = unit_distance;
-        regions[0].width    = unit_distance;
-        
-        /* "goback" */
-        regions[1].x_pos    = x_cursor ;
-        regions[1].y_pos    = y_cursor + unit_distance;
-        regions[1].height   = unit_distance;
-        regions[1].width    = unit_distance;
-        
-        /* "pre_pic" */
-        regions[2].x_pos    = x_cursor;
-        regions[2].y_pos    = y_cursor + unit_distance * 2;
-        regions[2].height   = unit_distance;
-        regions[2].width    = unit_distance;
-        
-        /* "next_pic" */
-        regions[3].x_pos    = x_cursor;
-        regions[3].y_pos    = y_cursor + unit_distance * 3;
-        regions[3].height   = unit_distance;
-        regions[3].width    = unit_distance;
-        
-        /* "unfold" */
-        regions[4].x_pos    = x_cursor;
-        regions[4].y_pos    = y_cursor + unit_distance * 4;
-        regions[4].height   = unit_distance;
-        regions[4].width    = unit_distance;
+
+        /* "home" 、"goback"、 "pre_pic"、"next_pic"、"unfold" 区域*/
+        for(i = 0 ; i < 5 ; i++){
+            regions[i].x_pos    = x_cursor;
+            regions[i].y_pos    = y_cursor + i * unit_distance;
+            regions[i].height   = unit_distance;
+            regions[i].width    = unit_distance;
+        }
         
         /* 图片显示区域 */
         regions[REGION_MAIN_PIC].x_pos    = x_cursor + unit_distance;
@@ -218,93 +198,68 @@ static int view_pic_page_calc_layout(struct page_struct *page)
 
 /* 很遗憾，这个函数要求图标长宽必须相同，否则会出现什么我也不确定 */
 /* 注意,此函数执行完后会将图标缩放至合适大小,但bpp是与原图像一致的,在合并时需要注意 */
-static int prepare_menu_icon_data(struct page_struct *page)
+static int prepare_icon_pixel_datas(struct page_struct *view_pic_page)
 {
     int i,ret;
-    struct pixel_data pixel_data;
-    struct page_region *regions = page->page_layout.regions;
-    struct picfmt_parser *png_parser = get_parser_by_name("png");
-    const char file_path[] = DEFAULT_ICON_FILE_PATH;
-    char file_full_path[100];
-    
-    memset(&pixel_data,0,sizeof(pixel_data));
-    for(i = 0 ; i < MENU_ICON_NUMS ; i++){
-        char *file_name;
-        int file_name_malloc = 0;
+    struct page_region *regions = view_pic_page->page_layout.regions;
+    struct pixel_data temp;
 
-        /* 为了预防文件名过长导致出错 */
-        if((strlen(file_path) + strlen(menu_icon_files[i]) + 1) > 99){
-            file_name = malloc(strlen(file_path) + strlen(menu_icon_files[i]) + 2);
-            if(!file_name){
-                DP_ERR("%s:malloc failed!\n");
-                return -ENOMEM;
-            }
-            sprintf(file_name,"%s/%s",file_path,menu_icon_files[i]);
-            file_name_malloc = 1;
-        }else{
-            sprintf(file_full_path,"%s/%s",file_path,menu_icon_files[i]);
-        }
-        
-        if(file_name_malloc){
-            ret = png_parser->get_pixel_data_in_rows(file_name,&pixel_data);
-        }else{
-            ret = png_parser->get_pixel_data_in_rows(file_full_path,&pixel_data);
-        } 
-        if(ret){
-            if(ret == -2){
-                //to-do 此种错误是可修复的
-            }
-            DP_ERR("%s:png get_pixel_data_in_rows failed!\n",__func__);
-            return -ENOMEM;
-        } 
+    if(view_pic_page->icon_prepared){
+        return 0;
+    }
+
+    /* 获取初始数据 */
+    ret = get_icons_pixel_data(icon_pixel_datas,icon_file_names,ICON_NUMS);
+    if(ret){
+        DP_ERR("%s:get_icons_pixel_data failed\n",__func__);
+        return ret;
+    }
+    
+    /* 将图标缩放至合适大小 */
+    for(i = 0 ; i < ICON_NUMS ; i++){
+        struct pixel_data temp;
+        memset(&temp,0,sizeof(struct pixel_data));
+
         /* 计算图标要缩放到的大小，并为其分配内存 */
         /* 特别注意,第5个区域是显示图片的主体区域 */
-        if(i < REGION_MAIN_PIC){
-            menu_icon_datas[i].width = regions[0].width;
-            menu_icon_datas[i].height = regions[0].height;
-        }else if(10 == i){
-            menu_icon_datas[i].width = regions[0].width;
-            menu_icon_datas[i].height = regions[0].height;
-        }else if(i >= REGION_MAIN_PIC){
-            menu_icon_datas[i].width = regions[6].width;
-            menu_icon_datas[i].height = regions[6].height;
+        if(i <= ICON_MENU_FOLD){
+            temp.width  = regions[REGION_MENU_HOME].width;
+            temp.height = regions[REGION_MENU_HOME].height;
+        }else if(i < ICON_NUMS){
+            temp.width  = regions[REGION_MENU_ZOOM_IN].width;
+            temp.height = regions[REGION_MENU_ZOOM_IN].height;
         }
         
-        menu_icon_datas[i].bpp = pixel_data.bpp;
-        menu_icon_datas[i].line_bytes = menu_icon_datas[i].width * menu_icon_datas[i].bpp / 8;
-        menu_icon_datas[i].total_bytes = menu_icon_datas[i].line_bytes * menu_icon_datas[i].height;
-        menu_icon_datas[i].buf = malloc(menu_icon_datas[i].total_bytes);
-        
-        if(!menu_icon_datas[i].buf){
-            DP_ERR("%s:malloc failed!\n",__func__);
-            return -ENOMEM;
-        } 
-        /* 数据是整块缓存的，要去除相应标志 */
-        memset(menu_icon_datas[i].buf,0xff,menu_icon_datas[i].total_bytes);
-        ret = pic_zoom_with_same_bpp(&menu_icon_datas[i],&pixel_data);
+        ret = pic_zoom_with_same_bpp(&temp,&icon_pixel_datas[i]);
         if(ret){
-            DP_ERR("%s:pic_zoom_with_same_bpp failed!\n",__func__);
-            return -1;
+            DP_ERR("%s:pic_zoom_with_same_bpp failed\n",__func__);
+            return ret;
         }
-
-        if(file_name_malloc){
-            free(file_name);
-        }
+        free(icon_pixel_datas[i].buf);
+        icon_pixel_datas[i] = temp;
     }
-    /* 释放由png解析函数分配的内存 */
-    if(pixel_data.in_rows){
-        for(i = 0 ; i < pixel_data.height ; i++){
-            free(pixel_data.rows_buf[i]);
-        }
-        free(pixel_data.rows_buf);
-    }
-
-    page->icon_prepared = 1;
+    view_pic_page->icon_prepared = 1;
 
     return 0;
 }
 
-/* 在此函数中将会计算好页面的布局情况,并且准备好图标数据 */
+/* 销毁图标数据 */
+static void destroy_icon_pixel_datas(struct page_struct *view_pic_page)
+{
+    int i;
+
+    if(!view_pic_page->icon_prepared)
+        return;
+    
+    for(i = 0 ; i < ICON_NUMS ; i++){
+        if(icon_pixel_datas[i].buf)
+            free(icon_pixel_datas[i].buf);
+    }
+    memset(icon_pixel_datas,0,sizeof(icon_pixel_datas));
+    view_pic_page->icon_prepared = 0;
+}
+
+/* 在此函数中将会计算好页面的布局情况 */
 static int view_pic_page_init(void)
 {
     int ret;
@@ -329,22 +284,7 @@ static int view_pic_page_init(void)
         return ret;
     }
 
-    // ret = prepare_menu_icon_data(&view_pic_page);
-    if(ret){
-        DP_ERR("%s:prepare_menu_icon_data failed!\n",__func__);
-        return -1;
-    }
-
     return 0;
-}
-
-/* 对应的销毁函数，可能用不上，但按理说应该是需要的 */
-static void destroy_menu_icon_data(void)
-{
-    int i;
-    for(i = 0 ; i < MENU_ICON_NUMS ; i++){
-        free(menu_icon_datas[i].buf);
-    }
 }
 
 /* 退出函数 */
@@ -372,7 +312,7 @@ static void view_pic_page_exit(void)
         free(view_pic_page.page_mem.buf);
     }
 
-    destroy_menu_icon_data();
+    destroy_icon_pixel_datas(&view_pic_page);
 }
 
 /* 将图片重置为能在屏幕上显示的大小，注意：这个函数只能对保留有原有数据的缓存使用,save_orig参数是说明是否要保留原始数据 */
@@ -593,16 +533,20 @@ static int generate_pic_cache(void)
     return 0;
 }
 
-static int fill_menu_icon_area(struct page_struct *page)
+static int fill_menu_icon_area(struct page_struct *view_pic_page)
 {
     int i,ret;
-    struct page_region *regions = page->page_layout.regions;
+    struct page_region *regions = view_pic_page->page_layout.regions;
+
+    if(!view_pic_page->icon_prepared)
+        prepare_icon_pixel_datas(view_pic_page);
+    
     for(i = 0 ; i < REGION_MAIN_PIC ; i++){
         /* 没有数据直接跳过 */
-        if(!menu_icon_datas[i].buf){
+        if(!icon_pixel_datas[i].buf){
             continue;
         }
-        ret = merge_pixel_data(regions[i].pixel_data,&menu_icon_datas[i]);
+        ret = merge_pixel_data(regions[i].pixel_data,&icon_pixel_datas[i]);
         if(ret < 0){
             DP_ERR("%s:merge_pixel_data failed!\n",__func__);
             return ret;
@@ -615,17 +559,20 @@ static int fill_unfolded_menu_icon_area(struct page_struct *page)
 {
     int i,ret;
     struct page_region *regions = page->page_layout.regions;
-    for(i = REGION_MENU_ZOOM_IN ; i <= REGION_MENU_PIC_RESET ; i++){
+    
+    for(i = 0 ; i <= (REGION_MENU_PIC_RESET - REGION_MENU_ZOOM_IN) ; i++){
         /* 没有数据直接跳过 */
-        if(!menu_icon_datas[i - 1].buf){
+        if(!icon_pixel_datas[ICON_MENU_ZOOM_IN + i].buf){
             continue;
         }
-        ret = merge_pixel_data(regions[i].pixel_data,&menu_icon_datas[i - 1]);
+        ret = merge_pixel_data(regions[REGION_MENU_ZOOM_IN + i].pixel_data,&icon_pixel_datas[ICON_MENU_ZOOM_IN + i]);
         if(ret < 0){
             DP_ERR("%s:merge_pixel_data failed!\n",__func__);
             return ret;
         }
     }
+    clear_pixel_data(regions[REGION_MENU_UNFOLD].pixel_data,0xffff);
+    merge_pixel_data(regions[REGION_MENU_UNFOLD].pixel_data,&icon_pixel_datas[ICON_MENU_FOLD]);
  
     return 0;
 }
@@ -665,7 +612,7 @@ static int fill_main_pic_area(struct page_struct *page)
     DP_INFO("cur_pic->has_data:%d\n",cur_pic->has_data);
     /* 先清理该区域 */
     clear_pixel_data(dst_data,BACKGROUND_COLOR);
-DP_INFO("%d\n",__LINE__);
+
     /* 先解出显示相关的几个座标 */
     x_vpic = cur_pic->virtual_x;
     y_vpic = cur_pic->virtual_y;
@@ -674,7 +621,7 @@ DP_INFO("%d\n",__LINE__);
     pic_width = src_data->width;
     pic_height = src_data->height;
     /* 先解决x方向 */
-    if(x_vpic < 0){DP_INFO("%d\n",__LINE__);
+    if(x_vpic < 0){
         if((x_vpic + pic_width - 1) < 0){
             return 0;           //图像已经超出显示区域了
         }else if((x_vpic + pic_width - 1) < region_width){
@@ -819,9 +766,9 @@ static int view_pic_page_fill_layout(struct page_struct *page)
     
     /* 检查菜单图标数据 */
     if(!page->icon_prepared){
-        ret = prepare_menu_icon_data(page);
+        ret = prepare_icon_pixel_datas(page);
         if(ret){
-            DP_ERR("%s:prepare_menu_icon_data failed!\n",__func__);
+            DP_ERR("%s:prepare_icon_pixel_datas failed!\n",__func__);
             return -1;
         }
         page->icon_prepared = 1;
@@ -1030,8 +977,6 @@ static int unfold_menu_cb_func(void)
             DP_ERR("%s:fill_unfolded_menu_icon_area failed!\n",__func__);
             return ret;
         }
-        clear_pixel_data(regions[REGION_MENU_UNFOLD].pixel_data,0xffff);
-        merge_pixel_data(regions[REGION_MENU_UNFOLD].pixel_data,&menu_icon_datas[MENU_ICON_FOLD]);
         /* 设置相应标志位 */
         menu_unfolded = 1;
         /* 将改动冲洗到缓存中 */
@@ -1045,7 +990,7 @@ static int unfold_menu_cb_func(void)
         menu_unfolded = 0;
         /* 如果已经是展开状态，重新显示主体图片，覆盖图标，并设置相应标志 */
         clear_pixel_data(regions[REGION_MENU_UNFOLD].pixel_data,0xffff);
-        merge_pixel_data(regions[REGION_MENU_UNFOLD].pixel_data,&menu_icon_datas[MENU_ICON_UNFOLD]);
+        merge_pixel_data(regions[REGION_MENU_UNFOLD].pixel_data,&icon_pixel_datas[ICON_MENU_UNFOLD]);
         flush_page_region(&regions[REGION_MENU_UNFOLD],default_dsiplay);
         fill_main_pic_area(&view_pic_page);     //原有图像已被破坏，需要重新填充
         flush_main_pic_area(&view_pic_page);

@@ -3,3 +3,5 @@ obj-y+=main_page.o
 obj-y+=browse_page.o
 obj-y+=view_pic_page.o
 obj-y+=auto_page.o
+obj-y+=setting_page.o
+obj-y+=interval_page.o

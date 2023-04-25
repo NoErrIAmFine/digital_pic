@@ -4,12 +4,14 @@
 #include "display_manager.h"
 #include "input_manager.h"
 
-#define PAGE_REGION(_index,_level,_name,_file_name) {   \
-    .index = _index,                                    \
-    .level = _level,                                    \
-    .name = _name,                                      \
-    .file_name = _file_name,                            \
+#define PAGE_REGION(_index,_level,_name,_page) {    \
+    .index      = _index,                           \
+    .level      = _level,                           \
+    .name       = _name,                            \
+    .owner_page = _page                             \
 }
+
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]) + __must_be_array(arr))
 
 struct page_region
 {
@@ -24,8 +26,8 @@ struct page_region
     const char *name;
     /* 该区域所对应的数据所在的内存位置，不是必需的 */
     struct pixel_data *pixel_data;
-    /* 该区域所属的页布局 */
-    struct page_layout *page_layout;
+    /* 该区域所属的页面 */
+    struct page_struct *owner_page;
     void *private_data;
     /* 是否已经分配了内存 */
     unsigned int allocated:1;
@@ -77,6 +79,15 @@ struct page_struct
     unsigned int icon_prepared:1;
 };
 
+/* 专用于autoplay页面，用于从其他页面接收连播目录和连播间隔信息 */
+struct autoplay_private
+{
+#define MAX_AUTOPLAY_DIRS 10
+    char *autoplay_dirs[MAX_AUTOPLAY_DIRS];
+    unsigned long autoplay_dir_num;
+    unsigned long autoplay_interval;
+};
+
 int register_page_struct(struct page_struct *);
 int unregister_page_struct(struct page_struct *);
 struct page_struct *get_page_by_name(const char *);
@@ -99,11 +110,16 @@ int flush_page_region(struct page_region*,struct display_struct *);
 unsigned int calc_page_id(const char *);
 int remap_regions_to_page_mem(struct page_struct *page);
 int unmap_regions_to_page_mem(struct page_struct *page);
+int get_icons_pixel_data(struct pixel_data *icon_datas,const char **icon_names,int icon_num);
+int invert_region(struct pixel_data *);
+int press_region(struct page_region *region,int press,int pattern);
 
 int main_init(void);
 int browse_init(void);
 int view_pic_init(void);
 int autoplay_init(void);
 int page_init(void);
+int setting_init(void);
+int interval_init(void);
 
 #endif // !__PAGE_MANAGER_H

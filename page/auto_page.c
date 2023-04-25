@@ -25,15 +25,6 @@ struct file_info
     int file_type;
 };
 
-/* 此页面的私有结构，用于从其他页面接收连播目录和连播间隔信息 */
-struct autoplay_private
-{
-#define MAX_AUTOPLAY_DIRS 10
-    char *autoplay_dirs[MAX_AUTOPLAY_DIRS];
-    unsigned long autoplay_dir_num;
-    unsigned long autoplay_interval;
-};
-
 static struct page_struct auto_page;
 
 static pthread_t autoplay_thread_id;
@@ -88,7 +79,7 @@ static int auto_page_init(void)
     regions->y_pos  = 0;
     regions->width  = width;
     regions->height = height;
-    regions->page_layout = page_layout;
+    regions->owner_page = &auto_page;
     page_layout->regions = regions;
     page_layout->region_num = 1;
 
@@ -199,12 +190,11 @@ static int get_autoplay_file_infos(char **cur_dirs,int *cur_dir_index,int *file_
             free(origin_dirents);
             origin_dirents = NULL;
         }
-            
-        printf("%s-(*cur_dir_index)++:%d,cur_dir_nums:%d\n",__func__,(*cur_dir_index)++,cur_dir_nums);
+        
         /* 如果找完第一个目录未找到10个图片文件，且指定了多个目录，尝试读取其他目录 */
         if(++(*cur_dir_index) < cur_dir_nums){
             (void)(*cur_dir_index)++;
-            *file_index_in_dir = 0;printf("%s-(*cur_dir_index)++:%d,cur_dir_nums:%d\n",__func__,(*cur_dir_index)++,cur_dir_nums);
+            *file_index_in_dir = 0;
             continue;
         }else{
             /* 回绕第一个目录继续找 */
@@ -430,9 +420,8 @@ static int auto_page_run(struct page_param *pre_param)
         ret = remap_regions_to_page_mem(&auto_page);
         if(ret){
             DP_ERR("%s:remap_regions_to_page_mem failed!\n",__func__);
-            return -1;
+            return ret;
         }
-        auto_page.region_mapped = 1;
     }
 
     /* 获取要连播的图片文件信息数组 */

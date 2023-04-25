@@ -24,6 +24,5 @@ int clear_pixel_data(struct pixel_data *dst_data,unsigned int color);
 int copy_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_data);
 int merge_pixel_data_in_center(struct pixel_data *dst_data,struct pixel_data *src_data);
 int merge_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_data);
-int invert_region(struct pixel_data *);
 
 #endif // !__RENDER_H

@@ -7,6 +7,8 @@
         "font_render.h": "c",
         "render.h": "c",
         "typeinfo": "c",
-        "time.h": "c"
+        "time.h": "c",
+        "pic_operation.h": "c",
+        "page_manager.h": "c"
     }
 }

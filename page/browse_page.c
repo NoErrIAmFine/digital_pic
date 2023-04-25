@@ -69,7 +69,7 @@ enum icon_info{
 };
 
 /* 图标文件名字符串数组 */
-static char *icon_file_names[] = {
+static const char *icon_file_names[] = {
     [ICON_MENU_HOME]            = "home.png",
     [ICON_MENU_GOBACK]          = "goback.png",
     [ICON_MENU_SELECT]          = "select.png",
@@ -91,7 +91,6 @@ static char *icon_file_names[] = {
 };
 
 static struct pixel_data icon_pixel_datas[ICON_NUMS];
-
 
 /* 与文件夹选择相关的几个全局变量 */
 #define MAX_SELECTED_DIR 10
@@ -366,7 +365,7 @@ static int browse_page_calc_menu_layout(struct page_struct *page)
 
 static int browse_page_calc_layout(struct page_struct *page)
 {
-    int ret;
+    int i,ret;
 
     if(page->already_layout){
         return -1;
@@ -381,6 +380,10 @@ static int browse_page_calc_layout(struct page_struct *page)
     if(ret < 0){
         DP_ERR("%s:browse_page_calc_file_layout failed!\n",__func__);
         return ret;
+    }
+
+    for(i = 0 ; i < page->page_layout.region_num ; i++){
+        page->page_layout.regions[i].owner_page = page;
     }
     browse_page.already_layout = 1;
     return 0;

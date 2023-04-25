@@ -168,7 +168,6 @@ int get_char_bitamp_from_buf(const char *buf,unsigned int len,const char *code_t
     return 0;
 }
 
-
 static void compute_string_bbox(FT_BBox *abbox,FT_Glyph *glyphs,FT_Vector *pos,unsigned int num_glyphs)
 {
     unsigned int n;
@@ -233,7 +232,8 @@ static int draw_bitmap_in_pixel_data(struct pixel_data *pixel_data,FT_Bitmap *bi
 
     if(16 == pixel_data->bpp){
         unsigned int temp;
-        char bit,temp_byte;
+        int bit;
+        char temp_byte;
         temp = pos_x * pixel_data->bpp / 8;
         for(i = 0 ; i < height ; i++){
             /* 按数据的不同的储存方式作不同处理 */
@@ -243,18 +243,21 @@ static int draw_bitmap_in_pixel_data(struct pixel_data *pixel_data,FT_Bitmap *bi
                 dst_buf = pixel_data->buf + (pos_y + i) * pixel_data->line_bytes + temp;
             }
             src_buf = bitmap->buffer + bitmap->pitch * i;
-            temp_byte = *src_buf++;
-            for(j = 0 ,bit = 7; j < width ; j++ ,bit--){
-                if(bit == 0){
-                    bit = 7;
-                    temp_byte = *src_buf++;
+
+            for(j = 0 ,bit = 7; j < width ; j++){
+                if(bit == 7){
+                    temp_byte = *src_buf;
+                    src_buf++;
                 }
-                if(temp_byte & 0x80){
+                if(temp_byte & (1 << bit)){
                     *(unsigned short *)dst_buf = (unsigned short)FOREGROUND_COLOR;
                 }else{
-                    // *(unsigned short *)dst_buf = (unsigned short)BACKGROUND_COLOR;
+                    *(unsigned short *)dst_buf = (unsigned short)BACKGROUND_COLOR;
                 }
-                temp_byte <<= 1;
+                bit--;
+                if(bit == -1){
+                    bit = 7;
+                }
                 dst_buf += 2;
             }
         }   
@@ -278,7 +281,7 @@ struct pixel_data *pixel_data,unsigned int font_align,unsigned int color,unsigne
     struct font_bitmap font_bitmap;
     FT_BBox bbox;
     FT_GlyphSlot slot;
-#define MAX_STRING_SIZE 80
+#define MAX_STRING_SIZE 100
     FT_Glyph glyphs[MAX_STRING_SIZE];
     FT_Vector pos[MAX_STRING_SIZE];
     unsigned num_glyphs,n;
@@ -701,31 +704,3 @@ int merge_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_data)
     return 0;
 }
 
-int invert_region(struct pixel_data *pixel_data)
-{   
-    unsigned short *line_buf;
-    unsigned int width,height;
-    unsigned int i,j;
-    /* 暂只处理16bpp */
-    if(16 == pixel_data->bpp){
-        width = pixel_data->width;
-        height = pixel_data->height;
-        for(i = 0 ; i < height ; i++){
-            /* 根据数据的不同储存方式获取行起始处指针 */
-            if(pixel_data->in_rows){
-                line_buf = (unsigned short *)pixel_data->rows_buf[i];
-            }else{
-                line_buf = (unsigned short *)pixel_data->buf + pixel_data->line_bytes * i;
-            }
-            for(j = 0 ; j < width ; j++){
-                *line_buf = ~(*line_buf);
-                line_buf++;
-            }
-        }
-        return 0;
-    }else{
-        DP_INFO("%s:unsupported bpp!\n",__func__);
-        return -1;
-    }
-
-}

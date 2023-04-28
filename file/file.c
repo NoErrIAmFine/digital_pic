@@ -11,6 +11,7 @@
 
 #include "debug_manager.h"
 #include "picfmt_manager.h"
+#include "font_decoder.h"
 
 static const char *special_dirs[] = {"sbin", "bin", "usr", "lib", "proc", "tmp", "dev", "sys", NULL};
 
@@ -327,12 +328,12 @@ int get_file_type(const char *path,const char *name)
     int ret = 0;
     int i,fd;
     struct picfmt_parser *parser;
+    struct font_decoder *decoder;
     char buf[4];
-    static const char utf8_bom[] = {0xef,0xbb,0xbf};
-    static const char utf16be_bom[] = {0xfe,0xff};
-    static const char utf16le_bom[] = {0xff,0xfe};
-    static const char utf32be_bom[] = {0x00,0x00,0xfe,0xff};
-    static const char utf32le_bom[] = {0xff,0xfe,0x00,0x00};
+    const char *decoder_names[] = {
+        "utf-8","utf-16be","utf-16le",
+    };
+
     const char *parser_names[] = {
         [FILETYPE_FILE_BMP] = "bmp",
         [FILETYPE_FILE_JPEG] = "jpeg",
@@ -359,21 +360,15 @@ int get_file_type(const char *path,const char *name)
         }
     }
 
-    /* 运行到这里说明还未识别出来,这里检测几个字节序标记,如果检测到视其为文本文件 */
-    /* 先读出文件的前4个字节 */
-    if((fd = open(full_name,O_RDONLY)) < 0){
-        DP_ERR("%s:open error!\n",__func__);
-        return fd;
+    /* 再判断是不是文本文件 */
+    for(i = 0 ; i < 3; i++){
+        decoder = get_font_decoder_by_name(decoder_names[i]);
+        if(decoder && decoder->is_support){
+            if(decoder->is_support(full_name)){
+                return FILETYPE_FILE_TXT;
+            }
+        }
     }
-    if(4 != read(fd,buf,4)){
-        DP_ERR("%s:read error!\n",__func__);
-        close(fd);
-        return -1;
-    }
-    close(fd);
-    if(!memcmp(buf,utf8_bom,3) || !memcmp(buf,utf16be_bom,2) || !memcmp(buf,utf16le_bom,2) || \
-       !memcmp(buf,utf32be_bom,4) || !memcmp(buf,utf32le_bom,4)){
-           return FILETYPE_FILE_TXT;
-    }
+    
     return FILETYPE_FILE_OTHER;
 }

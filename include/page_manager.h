@@ -4,10 +4,9 @@
 #include "display_manager.h"
 #include "input_manager.h"
 
-#define PAGE_REGION(_index,_level,_name,_page) {    \
+#define PAGE_REGION(_index,_level,_page) {    \
     .index      = _index,                           \
     .level      = _level,                           \
-    .name       = _name,                            \
     .owner_page = _page                             \
 }
 
@@ -22,8 +21,6 @@ struct page_region
     int index;
     /* 该区域的层次，区域是可以重叠的，在上面的层次越高 */
     int level;
-    /* 为该区域取一个名字 */
-    const char *name;
     /* 该区域所对应的数据所在的内存位置，不是必需的 */
     struct pixel_data *pixel_data;
     /* 该区域所属的页面 */
@@ -110,7 +107,8 @@ int flush_page_region(struct page_region*,struct display_struct *);
 unsigned int calc_page_id(const char *);
 int remap_regions_to_page_mem(struct page_struct *page);
 int unmap_regions_to_page_mem(struct page_struct *page);
-int get_icons_pixel_data(struct pixel_data *icon_datas,const char **icon_names,int icon_num);
+int get_icon_pixel_datas(struct pixel_data *icon_datas,const char **icon_names,int icon_num);
+void destroy_icon_pixel_datas(struct page_struct *page,struct pixel_data *icon_datas,int icon_num);
 int invert_region(struct pixel_data *);
 int press_region(struct page_region *region,int press,int pattern);
 
@@ -121,5 +119,6 @@ int autoplay_init(void);
 int page_init(void);
 int setting_init(void);
 int interval_init(void);
+int text_init(void);
 
 #endif // !__PAGE_MANAGER_H

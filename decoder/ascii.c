@@ -1,5 +1,9 @@
-#include "font_decoder.h"
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#include <stdio.h>
 
+#include "font_decoder.h"
 
 static int ascii_font_init(struct font_decoder *decoder)
 {
@@ -11,11 +15,26 @@ static int ascii_font_init(struct font_decoder *decoder)
     return 0;
 }
 
-static int ascii_is_support(const char *buf)
+static int ascii_is_support(const char *file_name)
 {
-    /* 暂只简单处理,如果字符第七位为0,则认为是ascii */
-    if((*buf) & 0x80){
-        return 0;
+    int i,fd;
+    char file_buf[50];
+    
+    if((fd = open(file_name,O_RDONLY)) < 0){
+        perror("open text file failed!\n");
+        return errno;
+    }
+
+    if(50 != read(fd,file_buf,50)){
+        perror("write text file failed!\n");
+        return errno;
+    }
+    close(fd);
+    /* 如果前50个字节的第七位都为0，则认为是ascii */
+    for(i = 0 ; i < 50 ; i++){
+        if(file_buf[i] & 0x80){
+            return 0;
+        } 
     }
     return 1;
 }

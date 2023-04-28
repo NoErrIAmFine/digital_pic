@@ -187,7 +187,6 @@ static int browse_page_calc_file_layout(struct page_struct *page)
                 regions[region_offset1].height = DIR_SELECT_ICON_WIDTH;
                 regions[region_offset1].index  = region_offset1;
                 regions[region_offset1].level  = 2;
-                regions[region_offset1].name   = "file_select_region";
                 region_offset1++;
 
                 /* 用于响应点击事件的区域,注意level为1 */
@@ -197,7 +196,6 @@ static int browse_page_calc_file_layout(struct page_struct *page)
                 regions[region_offset].height = file_all_width;
                 regions[region_offset].index  = region_offset;
                 regions[region_offset].level  = 1;
-                regions[region_offset].name   = "input_region";
                 region_offset++;
 
                 /* 文件图标区域 */
@@ -207,7 +205,6 @@ static int browse_page_calc_file_layout(struct page_struct *page)
                 regions[k].height = file_icon_width;
                 regions[k].index = k;
                 regions[k].level = 0;
-                regions[k].name = "file_icon";
                 k++;
 
                 /* 文件名区域 */
@@ -217,7 +214,6 @@ static int browse_page_calc_file_layout(struct page_struct *page)
                 regions[k].height = file_name_height;
                 regions[k].index = k;
                 regions[k].level = 0;
-                regions[k].name = "file_name";
                 k++;
 
                 x_cursor += (file_all_width + x_delta);
@@ -1053,7 +1049,7 @@ static int file_dir_area_cb_func(int region_index,void *data)
     unsigned int selected_file_index = *(unsigned int *)data;
     struct page_region *regions = browse_page.page_layout.regions;
     struct display_struct *default_display = get_default_display();
-    struct page_struct *view_pic_page;
+    struct page_struct *next_page;
     char *file_name;
     int ret;
     struct page_param page_param;
@@ -1100,44 +1096,49 @@ static int file_dir_area_cb_func(int region_index,void *data)
         default_display->flush_buf(default_display,browse_page.page_mem.buf,browse_page.page_mem.total_bytes);
     }else if(FILETYPE_REG == cur_dir_contents[selected_file_index]->type){
         /* 打开文件 */
+        /* 既然能识别出该文件,那么就得能打开该文件,否则还是识别为未知文件为好 */
+        /* 先构造出文件的绝对路径名,然后把后面的事交给专门的处理页面吧 */
+        file_name = malloc(strlen(cur_dir) + 2 + strlen(cur_dir_contents[selected_file_index]->name));
+        if(!file_name){
+            DP_ERR("%s:malloc failed\n",__func__);
+            return -ENOMEM;
+        }
+        if(!strcmp(cur_dir,"/")){
+            sprintf(file_name,"/%s",cur_dir_contents[selected_file_index]->name);
+        }else{
+            sprintf(file_name,"%s/%s",cur_dir,cur_dir_contents[selected_file_index]->name);
+        }
+        /* 构造页面之间传递的参数 */
+        page_param.id = browse_page.id;
+        page_param.private_data = file_name;
         switch (cur_dir_contents[selected_file_index]->file_type){
-            /* 目前就支持两大类文件:图片和文本 */
+            /* 目前只支持两大类文件:图片和文本 */
             case FILETYPE_FILE_BMP:
             case FILETYPE_FILE_JPEG:
             case FILETYPE_FILE_PNG:
             case FILETYPE_FILE_GIF:
-                /* 有个要求,既然能识别出该文件,那么就得能打开该文件,否则就别识别了 */
-                /* 构造出文件的绝对路径名,然后把后面的事交给view_page吧 */
-                file_name = malloc(strlen(cur_dir) + 2 + strlen(cur_dir_contents[selected_file_index]->name));
-                if(!file_name){
-                    DP_ERR("%s:malloc failed\n",__func__);
-                    return -ENOMEM;
-                }
-                if(!strcmp(cur_dir,"/")){
-                    sprintf(file_name,"/%s",cur_dir_contents[selected_file_index]->name);
-                }else{
-                    sprintf(file_name,"%s/%s",cur_dir,cur_dir_contents[selected_file_index]->name);
-                }
-                
-                /* 构造页面之间传递的参数 */
-                page_param.id = browse_page.id;
-                page_param.private_data = file_name;
                 /* 获取page_struct */
-                view_pic_page = get_page_by_name("view_pic_page");
-                if(!view_pic_page){
+                next_page = get_page_by_name("view_pic_page");
+                if(!next_page){
                     DP_ERR("%s:get view_pic_page failed\n",__func__);
                     return -1;
                 }
-                view_pic_page->run(&page_param);
-                free(file_name);
-                /* 应该重新渲染该页,似乎不用重新填充页面,直接将页面内存的数据输入显示屏缓存就可以了 */
-                default_display->flush_buf(default_display,browse_page.page_mem.buf,browse_page.page_mem.total_bytes);
                 break;
             case FILETYPE_FILE_TXT:
+                /* 获取page_struct */
+                next_page = get_page_by_name("text_page");
+                if(!next_page){
+                    DP_ERR("%s:get view_pic_page failed\n",__func__);
+                    return -1;
+                }
                 break;
             default:
                 break;
         }
+        next_page->run(&page_param);
+        free(file_name);
+        /* 应该重新渲染该页,似乎不用重新填充页面,直接将页面内存的数据输入显示屏缓存就可以了 */
+        default_display->flush_buf(default_display,browse_page.page_mem.buf,browse_page.page_mem.total_bytes);
     }
     return 0;
 }

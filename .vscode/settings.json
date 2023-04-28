@@ -9,6 +9,12 @@
         "typeinfo": "c",
         "time.h": "c",
         "pic_operation.h": "c",
-        "page_manager.h": "c"
+        "page_manager.h": "c",
+        "font_decoder.h": "c",
+        "list.h": "c",
+        "*.tcc": "c",
+        "fstream": "c",
+        "fcntl.h": "c",
+        "stdlib.h": "c"
     }
 }

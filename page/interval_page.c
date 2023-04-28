@@ -65,9 +65,9 @@ static int prepare_icon_pixel_datas(struct page_struct *interval_page)
     }
 
     /* 获取初始数据 */
-    ret = get_icons_pixel_data(icon_pixel_datas,icon_file_names,ICON_NUMS);
+    ret = get_icon_pixel_datas(icon_pixel_datas,icon_file_names,ICON_NUMS);
     if(ret){
-        DP_ERR("%s:get_icons_pixel_data failed\n",__func__);
+        DP_ERR("%s:get_icon_pixel_datas failed\n",__func__);
         return ret;
     }
 
@@ -497,11 +497,11 @@ static int interval_page_run(struct page_param *pre_page_param)
 }
 
 static struct page_region interval_page_regions[] = {
-    PAGE_REGION(REGION_INCREASE,0,"inc",&interval_page),
-    PAGE_REGION(REGION_TIME,0,"time",&interval_page),
-    PAGE_REGION(REGION_DECREASE,0,"dec",&interval_page),
-    PAGE_REGION(REGION_RETURN,0,"return",&interval_page),
-    PAGE_REGION(REGION_SAVE,0,"save",&interval_page),
+    PAGE_REGION(REGION_INCREASE,0,&interval_page),
+    PAGE_REGION(REGION_TIME,0,&interval_page),
+    PAGE_REGION(REGION_DECREASE,0,&interval_page),
+    PAGE_REGION(REGION_RETURN,0,&interval_page),
+    PAGE_REGION(REGION_SAVE,0,&interval_page),
 };
 
 static struct page_struct interval_page = {

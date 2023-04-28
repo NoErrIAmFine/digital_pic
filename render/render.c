@@ -252,7 +252,7 @@ static int draw_bitmap_in_pixel_data(struct pixel_data *pixel_data,FT_Bitmap *bi
                 if(temp_byte & (1 << bit)){
                     *(unsigned short *)dst_buf = (unsigned short)FOREGROUND_COLOR;
                 }else{
-                    *(unsigned short *)dst_buf = (unsigned short)BACKGROUND_COLOR;
+                    // *(unsigned short *)dst_buf = (unsigned short)BACKGROUND_COLOR;
                 }
                 bit--;
                 if(bit == -1){
@@ -335,7 +335,7 @@ struct pixel_data *pixel_data,unsigned int font_align,unsigned int color,unsigne
         font_render->get_char_glyph(code,&font_bitmap);
 
         glyphs[num_glyphs] = (FT_Glyph)font_bitmap.private_data;
-
+        
         num_glyphs++;
         if(num_glyphs > MAX_STRING_SIZE){
             /* 已达最大字符长度，退出 */
@@ -345,7 +345,6 @@ struct pixel_data *pixel_data,unsigned int font_align,unsigned int color,unsigne
         buf += char_len;
         len -= char_len;
     }
-    
     /*  计算最小边界框 */
     compute_string_bbox(&bbox,glyphs,pos,num_glyphs);
     if(!(bbox.xMin || bbox.xMax || bbox.yMin || bbox.yMax)){
@@ -399,6 +398,126 @@ struct pixel_data *pixel_data,unsigned int font_align,unsigned int color,unsigne
 
     return 0;
 }
+
+/* @description : 填充一行文字，应该事先通过decoder指定好字体大小和字体文件
+ * @return : 正数表示此次显示了多少字节的数据，负数表示出错，0表示到达文件尾 
+ */
+int fill_text_one_line(struct pixel_data *pixel_data,const char *file_buf,int len,struct font_decoder *decoder)
+{
+    int char_len,ret;
+    int read_len = 0;
+    unsigned int code;
+    unsigned int string_width,string_height;
+    int start_x,start_y; 
+    // struct font_decoder *font_decoder;
+    struct font_render *font_render;
+    struct font_bitmap font_bitmap;
+    FT_BBox bbox;
+    FT_GlyphSlot slot;
+#define MAX_STRING_SIZE 100
+    FT_Glyph glyphs[MAX_STRING_SIZE];
+    FT_Vector pos[MAX_STRING_SIZE];
+    unsigned num_glyphs,n;
+
+    font_bitmap.pen_x = 0;
+    font_bitmap.pen_y = 0;
+    font_bitmap.previous_index = 0;
+    num_glyphs = 0;
+    pos[num_glyphs].x = 0;
+    pos[num_glyphs].y = 0;
+
+    if(decoder->default_render){
+        font_render = decoder->default_render;
+    }else{
+        return -1;
+    }
+
+    /* 将字符串对应的所有字形读出来 */
+    while(len > 0){
+        char_len = decoder->get_code_from_buf(file_buf,len,&code);
+        if(char_len < 0){
+            DP_ERR("%s:get char code failed!\n",__func__);
+            return -1;
+        }
+        /* 处理回车换行 */
+        if(code == '\n'){
+            break;
+        }else if(code == '\r'){
+            read_len += char_len;
+            file_buf += char_len;
+            len -= char_len;
+            continue;
+        }else if(code == '\t'){
+            /* tab 用空格代替 */
+            code = ' ';
+        }
+        if(font_bitmap.pen_x > pixel_data->width){
+            /* 已超出最大显示区域，退出 */
+            num_glyphs ? num_glyphs-- : num_glyphs;
+            FT_Done_Glyph(glyphs[num_glyphs]);
+            break;
+        }
+        /* 记录读取了多少字节的数据 */
+        read_len += char_len;
+        pos[num_glyphs].x = font_bitmap.pen_x;
+        pos[num_glyphs].y = font_bitmap.pen_y;
+
+        font_render->get_char_glyph(code,&font_bitmap);
+
+        glyphs[num_glyphs] = (FT_Glyph)font_bitmap.private_data;
+        
+        num_glyphs++;
+        if(num_glyphs > MAX_STRING_SIZE){
+            /* 已达最大字符长度，退出 */
+            break;
+        }
+
+        file_buf += char_len;
+        len -= char_len;
+    }
+    
+    /*  计算最小边界框 */
+    if(!num_glyphs)
+        return 0;
+    compute_string_bbox(&bbox,glyphs,pos,num_glyphs);
+    
+    if(!(bbox.xMin || bbox.xMax || bbox.yMin || bbox.yMax)){
+        DP_ERR("%s:compute_string_bbox failed!\n",__func__);
+        return -1;
+    }
+    string_width = bbox.xMax - bbox.xMin;
+    string_height = bbox.yMax - bbox.yMin;
+
+    /* 如果字符高度超出，则直接返回,如果宽度超出的话直接截断即可 */
+    if(string_height > pixel_data->height){
+        DP_ERR("%s:string height is out of range!\n",__func__);
+        DP_DEBUG("string_height :%d,pixel_data->height :%d\n",string_height,pixel_data->height);
+        /* 这个错误是可修复的，调小字体就可以了 */
+        return -2;
+    }
+    
+    /* 计算起点,上下居中，左对齐 */
+    start_x = 0;
+    start_y = (((signed int)pixel_data->height - (signed int)string_height) / 2);
+    start_y = start_y + bbox.yMax;
+       
+    /* 挨个描绘 */
+    for(n = 0 ; n < num_glyphs ; n++){
+        FT_Glyph image;
+        // FT_Vector pen;
+        image = glyphs[n];
+        // pen.x = start_x + pos[n].x;
+        // pen.y = start_y + pos[n].y;
+        ret = FT_Glyph_To_Bitmap(&image,FT_RENDER_MODE_MONO,NULL,0);
+        if(!ret){
+            FT_BitmapGlyph bit = (FT_BitmapGlyph)image;
+            draw_bitmap_in_pixel_data(pixel_data,&bit->bitmap,start_x + pos[n].x,start_y - bit->top,BACKGROUND_COLOR);
+            FT_Done_Glyph(image);
+        }
+    }
+    
+    return read_len;
+} 
 
 int clear_pixel_data(struct pixel_data *pixel_data,unsigned int color)
 {
@@ -545,8 +664,8 @@ int merge_pixel_data_in_center(struct pixel_data *dst_data,struct pixel_data *sr
     return 0;
 }
 
-/* @description : 将一个区域的图像并入到另一个区域，之所以说是合并而不是复制，是因为这个函数考虑了透明度，两个图像大小必须相同
- * 支持的bpp有16、24、32，不能再复杂了 
+/* @description : 将一个区域的图像并入到另一个区域，之所以说是合并而不是复制，是因为这个函数考虑了透明度;
+ * 两个图像大小必须相同,但是bpp可以不同，支持的bpp有16、24、32，不能再复杂了 
  * 又臭又长的一个函数*/
 int merge_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_data)
 {

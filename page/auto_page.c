@@ -72,7 +72,6 @@ static int auto_page_init(void)
         return -ENOMEM;
     }
 
-    regions->name   = "main_region";
     regions->index  = 0;
     regions->level  = 0;
     regions->x_pos  = 0;

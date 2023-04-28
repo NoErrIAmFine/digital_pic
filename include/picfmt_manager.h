@@ -7,6 +7,8 @@ struct picfmt_parser
 {
     const char *name;
     struct picfmt_parser *next;
+    int (*init)(void);
+    void (*exit)(void);
     int (*is_support)(const char *);
     /* 为什么要用FILE，而不是文件名？能获取数据，说明肯定已经打开过文件了，
      * 我觉得没必要再传个文件名进去重新打开 */

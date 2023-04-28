@@ -150,15 +150,33 @@ int font_decoder_init(void)
         return ret;
     }
 
-    // if((ret = utf16be_init())){
-    //     DP_ERR("%s:utf16be_init failed!\n",__func__);
-    //     return ret;
-    // }
+    if((ret = utf16be_decoder_init())){
+        DP_ERR("%s:utf16be_init failed!\n",__func__);
+        return ret;
+    }
 
-    // if((ret = utf16le_init())){
-    //     DP_ERR("%s:utf16le_init failed!\n",__func__);
-    //     return ret;
-    // }
+    if((ret = utf16le_decoder_init())){
+        DP_ERR("%s:utf16le_init failed!\n",__func__);
+        return ret;
+    }
     
     return 0;
+}
+
+/* 根据文件内容，尝试获取一个解码器 */
+struct font_decoder *get_font_decoder_for_file(const char *file_name)
+{
+    struct font_decoder *temp;
+
+    /* 遍历font_decoder链表，调用上面的函数 */
+    temp = font_decoder_list;
+    while(temp){
+        if(temp->is_support){
+            if(temp->is_support(file_name)){
+                return temp;
+            }
+        }
+        temp = temp->next;
+    }
+    return NULL;
 }

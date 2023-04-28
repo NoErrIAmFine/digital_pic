@@ -130,6 +130,10 @@ int page_init(void)
     if((ret = interval_init())){
         return ret;
     }
+
+    if((ret = text_init())){
+        return ret;
+    }
     return 0;
 }
 
@@ -221,6 +225,9 @@ static int remap_region_to_page_mem(struct page_struct *page,struct page_region 
     if(region->x_pos >= layout->width || region->y_pos >= layout->height || \
       (region->x_pos + region->width) > layout->width || (region->y_pos + region->height) > layout->height){
           DP_ERR("%s:invalid region!\n",__func__);
+          DP_INFO("layout->width:%d,layout->height:%d\n",layout->width,layout->height);
+          DP_INFO("region.id:%d\n",region->index);
+          DP_INFO("region->x_pos:%d,region->y_pos:%d,region->width:%d,region->height:%d\n",region->x_pos,region->y_pos,region->width,region->height);
           return -1;
     }
 
@@ -270,7 +277,7 @@ int remap_regions_to_page_mem(struct page_struct *page)
     if(page->region_mapped){
         return 0;
     }
-
+    printf("page.name:%s-layout->region_num:%d\n",page->name,layout->region_num);
     for(i = 0 ; i < layout->region_num ; i++){
         ret = remap_region_to_page_mem(page,&regions[i]);
         if(ret){
@@ -329,7 +336,7 @@ int get_pic_pixel_data(const char *pic_file,char file_type,struct pixel_data *pi
 }
 
 /* 准备图标数据，只支持png格式文件，将图标原样读出，不进行缩放 */
-int get_icons_pixel_data(struct pixel_data *icon_datas,const char **icon_names,int icon_num)
+int get_icon_pixel_datas(struct pixel_data *icon_datas,const char **icon_names,int icon_num)
 {
     int i,j,ret;
     struct picfmt_parser *png_parser = get_parser_by_name("png");
@@ -387,6 +394,18 @@ free_icon_data:
         memset(&icon_datas[i],0,sizeof(struct pixel_data));
     }
     return ret;
+}
+
+void destroy_icon_pixel_datas(struct page_struct *page,struct pixel_data *icon_datas,int icon_num)
+{
+    int i;
+    if(page->icon_prepared){
+        for(i = 0 ; i < icon_num ; i++){
+            free(icon_datas[i].buf);
+            memset(&icon_datas[i],0,sizeof(struct pixel_data));
+        }
+    }
+    page->icon_prepared = 0;
 }
 
 int invert_region(struct pixel_data *pixel_data)

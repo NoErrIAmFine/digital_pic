@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <pthread.h>
 
 #include "config.h"
 #include "page_manager.h"
@@ -32,6 +33,15 @@ static struct page_struct view_pic_page;
 #define MIN_DRAG_DISTANCE (4 * 4)   //能够响应的最小的拖动距离
 
 static short min_drag_distance = MIN_DRAG_DISTANCE;
+
+struct pic_cache;
+/* 本页面用到的私有结构 */
+struct view_pic_private
+{
+    char **cur_file_name;
+    struct pic_cache *pic_cache;
+    int (*fill_main_pic_area)(struct page_struct *page)
+};
 
 /* 本页面用到的图标信息 */
 enum icon_info{
@@ -68,10 +78,12 @@ static struct pixel_data icon_pixel_datas[ICON_NUMS];
 static int menu_unfolded = 0;
 
 /* 文件目录相关的几个全局变量 */
-static char *cur_dir;                               //当前所在目录
-static struct dir_entry **cur_dir_pic_contents;     //当前目录下有那些图片
-static unsigned int cur_dir_pic_nums;               //当前浏览的目录下所含的图片数量
-static int cur_pic_index;                           //当前正浏览的图片在目录中的索引
+static char *cur_dir;                                       //当前所在目录
+static struct dir_entry **cur_dir_pic_contents;             //当前目录下有那些图片
+static unsigned int cur_dir_pic_nums;                       //当前浏览的目录下所含的图片数量
+static int cur_pic_index;                                   //当前正浏览的图片在目录中的索引
+static char *cur_file_name;                                 //当前正显示的文件，此名字用于显示gif图片
+// pthread_mutex_t cur_file_mutex = PTHREAD_MUTEX_INITIALIZER; //保护文件名字，这是一个全局变量
 
 /* 表示一个图片缓存 */
 struct pic_cache
@@ -83,8 +95,9 @@ struct pic_cache
     short angle;            //缓存中图片的角度，可能的取值:0,90,180,270
     struct pixel_data data;
     void *orig_data;
-    unsigned int has_data:1;         //标志位，说明缓存中是否有数据
-    unsigned int has_orig_data:1;    //标志位，表明缓存中是否含有原始数据
+    unsigned int has_data:1;        //标志位，说明缓存中是否有数据
+    unsigned int has_orig_data:1;   //标志位，表明缓存中是否含有原始数据
+    unsigned int is_gif:1;          //是否是一张gif图？
 };
 /* 缓存的图片,这里缓存的是原始数据,大小,bpp可能不同 */
 static unsigned int pic_caches_generated = 0;
@@ -209,9 +222,9 @@ static int prepare_icon_pixel_datas(struct page_struct *view_pic_page)
     }
 
     /* 获取初始数据 */
-    ret = get_icons_pixel_data(icon_pixel_datas,icon_file_names,ICON_NUMS);
+    ret = get_icon_pixel_datas(icon_pixel_datas,icon_file_names,ICON_NUMS);
     if(ret){
-        DP_ERR("%s:get_icons_pixel_data failed\n",__func__);
+        DP_ERR("%s:get_icon_pixel_datas failed\n",__func__);
         return ret;
     }
     
@@ -241,22 +254,6 @@ static int prepare_icon_pixel_datas(struct page_struct *view_pic_page)
     view_pic_page->icon_prepared = 1;
 
     return 0;
-}
-
-/* 销毁图标数据 */
-static void destroy_icon_pixel_datas(struct page_struct *view_pic_page)
-{
-    int i;
-
-    if(!view_pic_page->icon_prepared)
-        return;
-    
-    for(i = 0 ; i < ICON_NUMS ; i++){
-        if(icon_pixel_datas[i].buf)
-            free(icon_pixel_datas[i].buf);
-    }
-    memset(icon_pixel_datas,0,sizeof(icon_pixel_datas));
-    view_pic_page->icon_prepared = 0;
 }
 
 /* 在此函数中将会计算好页面的布局情况 */
@@ -312,7 +309,7 @@ static void view_pic_page_exit(void)
         free(view_pic_page.page_mem.buf);
     }
 
-    destroy_icon_pixel_datas(&view_pic_page);
+    destroy_icon_pixel_datas(&view_pic_page,icon_pixel_datas,ICON_NUMS);
 }
 
 /* 将图片重置为能在屏幕上显示的大小，注意：这个函数只能对保留有原有数据的缓存使用,save_orig参数是说明是否要保留原始数据 */
@@ -1527,11 +1524,18 @@ static int view_pic_page_run(struct page_param *pre_page_param)
     return 0;
 }
 
+static struct view_pic_private view_pic_priv = {
+    .cur_file_name = &cur_file_name,
+    .pic_cache = &pic_caches[1],
+    .fill_main_pic_area = fill_main_pic_area,
+};
+
 static struct page_struct view_pic_page = {
     .name = "view_pic_page",
     .init = view_pic_page_init,
     .exit = view_pic_page_exit,
     .run  = view_pic_page_run,
+    .private_data = &view_pic_priv,
     .allocated = 0,
 };
 

@@ -6,47 +6,13 @@
 #include <pthread.h>
 
 #include "picfmt_manager.h"
+#include "pic_operation.h"
 #include "debug_manager.h"
 #include "page_manager.h"
+#include "render.h"
 
-/* view_pic 页面用到的私有结构 */
-struct view_pic_private
-{
-    char **cur_file_name;
-    struct pic_cache *pic_cache;
-    int (*fill_main_pic_area)(struct page_struct *page)
-};
 
-/* 一帧数据 */
-struct gif_frame_data
-{
-    struct pixel_data data;
-    struct gif_frame_data *next;
-    int interval;                       /* 播放下一帧数据的间隔 */
-};
-
-/* 每个线程的管理数据结构，内含gif的各帧数据及间隔 */
-struct gif_thread_data
-{
-    char *gif_file;                     /* 当前正打开的gif文件 */
-    struct gif_frame_data *frame_data;  /* gif各帧数据 */
-};
-
-/* 线程数据结构，含3个线程 */
-struct thread_pool
-{
-#define THREAD_NUMS 3
-    pthread_t tids[THREAD_NUMS];
-    struct gif_thread_data thread_datas[THREAD_NUMS];
-    char *new_task[THREAD_NUMS];                        /* 准备播放的gif文件名 */
-    char *exit_task[THREAD_NUMS];                       /* 退出播放的gif文件名 */
-    int idle_thread;                                    /* 空闲线程数 */
-    pthread_mutex_t pool_mutex;
-    pthread_cond_t thread_cond;                         /* 空闲的线程在此等待 */
-    pthread_cond_t task_cond;                           /* 无空闲线程时，任务线程在此等待线程空闲 */
-};
-
-static struct thread_pool *thread_pool;
+static struct gif_thread_pool *thread_pool;
 // extern pthread_mutex_t cur_file_mutex;
 
 /* 用于同步的全局互斥量，在往页面内存写数据前要先获得此互斥量 */
@@ -69,16 +35,7 @@ static int gif_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
     unsigned char *rgb_line_buf;
     struct page_struct *view_pic_page = get_page_by_name("view_pic_page");
     struct view_pic_private *view_pic_priv = view_pic_page->private_data;
-
-    /* 获取 view_pic_page 页当前正显示的图片名字，以决定如何显示*/
-    // cur_file_name = malloc(strlen(*(char **)view_pic_page->private_data) + 1);
-    // if(!cur_file_name){
-    //     DP_ERR("%s:malloc failed!\n",__func__);
-    //     return -ENOMEM;
-    // }
-    // pthread_mutex_lock(&cur_file_mutex);
-    // strcpy(cur_file_name,*view_pic_priv->cur_file_name);
-    // pthread_mutex_unlock(&cur_file_mutex);
+    struct gif_frame_data *frame_data;
 
     /* 获取gif文件数据 */
     if ((gif_file = DGifOpenFileName(file_name,&err)) == NULL) {
@@ -86,34 +43,50 @@ static int gif_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
         return err;
     }
     /* 给屏幕分配内存 */
-    if ((screen_buffer = (GifRowType *)malloc(gif_file->SHeight * sizeof(GifRowType *))) == NULL)
+    err = -ENOMEM;
+    if ((screen_buffer = (GifRowType *)malloc(gif_file->SHeight * sizeof(GifRowType *))) == NULL){
         DP_ERR("%s:malloc failed.\n",__func__);
-    
+        DGifCloseFile(gif_file,&err);
+        return err;
+    }
+        
     /* 以背景色填充屏幕 */
-    row_size = gif_file->SWidth * sizeof(GifPixelType);             /* Size in bytes one row.*/
-    if((screen_buffer[0] = (GifRowType) malloc(row_size)) == NULL)  /* First row. */
+    row_size = gif_file->SWidth * sizeof(GifPixelType);                 /* Size in bytes one row.*/
+    if((screen_buffer[0] = (GifRowType) malloc(row_size)) == NULL){     /* First row. */
        DP_ERR("%s:malloc failed.\n",__func__);
+       DGifCloseFile(gif_file,&err);
+       free(screen_buffer);
+       return err;
+    }
     
     for (i = 0; i < gif_file->SWidth; i++)                          /* Set its color to BackGround. */
         screen_buffer[0][i] = gif_file->SBackGroundColor;
     for (i = 1; i < gif_file->SHeight; i++) {
         /* Allocate the other rows, and set their color to background too: */
-        if ((screen_buffer[i] = (GifRowType) malloc(row_size)) == NULL)
+        if ((screen_buffer[i] = (GifRowType) malloc(row_size)) == NULL){
             DP_ERR("%s:malloc failed.\n",__func__);
-        
+            DGifCloseFile(gif_file,&err);
+            for( ; --i >=0 ; ){
+                free(screen_buffer[i]);
+            }
+            free(screen_buffer);
+            return err;
+        }
+             
         memcpy(screen_buffer[i], screen_buffer[0], row_size);
     }
 
     /* 获取第一帧图像 */
-	do
-	{
+	do{
 		if(DGifGetRecordType(gif_file,&recoder_type)==GIF_ERROR)
             break;
 		
-		switch(recoder_type)
-		{
+		switch(recoder_type){
 		case IMAGE_DESC_RECORD_TYPE:
-			if(DGifGetImageDesc(gif_file)==GIF_ERROR)break;
+			if(DGifGetImageDesc(gif_file)==GIF_ERROR){
+                err = -1;
+                goto release_screen_buffer;
+            }
             row     = gif_file->Image.Top;
 			col     = gif_file->Image.Left;
 			width   = gif_file->Image.Width;
@@ -148,7 +121,7 @@ static int gif_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
 			/* 将数据转换为ARGB数据，保留透明度属性，即bpp为32 */
             if(pixel_data->buf)
                 free(pixel_data->buf);
-            memset(pixel_data,0,sizeof(pixel_data));
+            memset(pixel_data,0,sizeof(struct pixel_data));
             pixel_data->width = gif_file->SWidth;
             pixel_data->height = gif_file->SHeight;
             pixel_data->bpp = 32;
@@ -162,7 +135,7 @@ static int gif_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
             }
             for(i = 0 ; i < gif_file->SHeight ; i++){
                 gif_row_buf = screen_buffer[i];
-                rgb_line_buf = pixel_data->total_bytes + i * pixel_data->line_bytes;
+                rgb_line_buf = pixel_data->buf + i * pixel_data->line_bytes;
                 for(j = 0 ; j < gif_file->SWidth ; j++){
                     color_map_entry = &color_map->Colors[gif_row_buf[j]];
                     *rgb_line_buf++ = 0xff;
@@ -189,15 +162,57 @@ static int gif_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
 
 exit_loop:
     /* 如果当前获取的文件正是现在正在查看的，启动一个线程以更新动画 */
-    cur_file_name = view_pic_priv->cur_file_name;
-    if(!strcmp(cur_file_name,gif_file)){
-        /* 最后检测一次看当前文件是否已被放入退出列表 */
-        for(i = 0 ; i < 3 ; i++){
-
-        }
-
+    cur_file_name = *view_pic_priv->cur_gif_file;
+    /* 将线程池数据结构返回,复用row_buf指针 */
+    pixel_data->rows_buf = (unsigned char **)&thread_pool;         
+    /* 最后检测一次看当前文件打开文件是否为当前显示文件 */
+    if(strcmp(cur_file_name,file_name)){
+        goto release_screen_buffer;
     }
-    /* 如果当前获取的文件不是现在正在查看,那么现在可以直接返回了 */
+    
+    if(thread_pool->idle_thread){
+        /* 当前有空闲线程，不用等待，找到一个未提交任务的线程数据 */
+        pthread_mutex_lock(&thread_pool->pool_mutex);
+submit:
+        for(i = 0 ; i < THREAD_NUMS ; i++){
+            if(!thread_pool->thread_datas[i].submitted){
+                thread_pool->thread_datas[i].file_name = cur_file_name;
+                thread_pool->thread_datas[i].gif_file = gif_file;
+                thread_pool->thread_datas[i].screen_buf = screen_buffer;
+                thread_pool->thread_datas[i].submitted = 1;
+
+                /* 将已经读出来的第一帧数据缓存到线程数据结构中 */
+                if(NULL == (frame_data = malloc(sizeof(struct gif_frame_data)))){
+                    DP_ERR("%s:malloc failed!\n");
+                    pthread_mutex_unlock(&thread_pool->pool_mutex);
+                    goto release_screen_buffer;
+                }
+                /* rgb_line_buf 临时用的，名字无特殊含义 */
+                if(NULL == (rgb_line_buf = malloc(pixel_data->total_bytes))){
+                    DP_ERR("%s:malloc failed!\n");
+                    free(frame_data);
+                    pthread_mutex_unlock(&thread_pool->pool_mutex);
+                    goto release_screen_buffer;
+                }
+                memset(frame_data,0,sizeof(struct gif_frame_data));
+                frame_data->data = *pixel_data;
+                memcpy(rgb_line_buf,pixel_data->buf,pixel_data->total_bytes);
+                frame_data->data.buf = rgb_line_buf;
+                thread_pool->thread_datas[i].frame_data = frame_data;
+                thread_pool->thread_datas[i].frame_data_tail = frame_data;
+                pthread_cond_signal(&thread_pool->thread_cond);
+                pthread_mutex_unlock(&thread_pool->pool_mutex);
+                break;
+            }
+        }
+    }else{
+        /* 当前没有空闲先线程，则进行等待 */
+        pthread_mutex_lock(&thread_pool->pool_mutex);
+        pthread_cond_wait(&thread_pool->task_cond,&thread_pool->pool_mutex);
+        goto submit;
+        pthread_mutex_unlock(&thread_pool->pool_mutex);
+    }
+    return 0;
 
 release_screen_buffer:
     for(i = 0 ; i < gif_file->SHeight ; i++){
@@ -234,7 +249,290 @@ static int is_support_gif(const char *file_name)
 
 static void *gif_thread_func(void *data)
 {
+    struct gif_thread_pool *thread_pool = data;
+    struct gif_thread_data *thread_data;
+    struct gif_frame_data *frame_data,*frame_temp;
+    GifFileType *gif_file;
+    GifRowType *screen_buffer,gif_row_buf;
+    ColorMapObject *color_map;
+    GifColorType *color_map_entry;
+	GifByteType *extension = NULL;
+	GifRecordType recoder_type = UNDEFINED_RECORD_TYPE;
+    int interlaced_offset[] = {0,4,2,1};  // The way Interlaced image should
+	int interlaced_jumps[] = {8,8,4,2};   // be read - offsets and jumps...
+    int err,i,j;
+    int task_index;
+    int row_size,row,col,width,height;
+    unsigned char *rgb_line_buf;
+    struct page_struct *view_pic_page = get_page_by_name("view_pic_page");
+    struct view_pic_private *view_pic_priv = view_pic_page->private_data;
+    struct display_struct *display = get_default_display();
+    struct pic_cache *pic_cache;
+    int (*fill_pic_func)(struct page_struct *);
+
+    pthread_detach(pthread_self());         /* 分离线程 */
     
+    while(1){
+        pthread_mutex_lock(&thread_pool->pool_mutex);
+        pthread_cond_signal(&thread_pool->task_cond);
+        pthread_cond_wait(&thread_pool->thread_cond,&thread_pool->pool_mutex);
+        pthread_mutex_unlock(&thread_pool->pool_mutex);
+        
+        /* 寻找一个已提交任务 */
+        for(i = 0 ; i < THREAD_NUMS ; i++){
+            if(thread_pool->thread_datas[i].submitted && !thread_pool->thread_datas[i].processsing){
+                task_index = i;
+                thread_pool->thread_datas[i].processsing = 1;
+                break;
+            }
+        }
+        /* 按理说是一定能找到一个已提交任务的 */
+        if(i == THREAD_NUMS)
+            continue;
+        
+        thread_pool->idle_thread--;
+
+        /* 读取数据后续的帧 */
+        thread_data = &thread_pool->thread_datas[task_index];
+        /* 如果当前文件未打开过，先打开gif文件 */
+        if(!thread_data->gif_file){
+            /* 获取gif文件数据 */
+            if ((gif_file = DGifOpenFileName(thread_data->file_name,&err)) == NULL) {
+                DP_ERR("%s:open gif file failed!\n",__func__);
+                goto exit;
+            }
+            /* 给屏幕分配内存 */
+            if ((screen_buffer = (GifRowType *)malloc(gif_file->SHeight * sizeof(GifRowType *))) == NULL){
+                DP_ERR("%s:malloc failed.\n",__func__);
+                DGifCloseFile(gif_file,&err);
+                goto exit;
+            }
+                
+            /* 以背景色填充屏幕 */
+            row_size = gif_file->SWidth * sizeof(GifPixelType);                 /* Size in bytes one row.*/
+            if((screen_buffer[0] = (GifRowType) malloc(row_size)) == NULL){     /* First row. */
+                DP_ERR("%s:malloc failed.\n",__func__);
+                DGifCloseFile(gif_file,&err);
+                free(screen_buffer);
+                goto exit;
+            }
+            
+            for (i = 0; i < gif_file->SWidth; i++)                          /* Set its color to BackGround. */
+                screen_buffer[0][i] = gif_file->SBackGroundColor;
+            for (i = 1; i < gif_file->SHeight; i++) {
+                /* Allocate the other rows, and set their color to background too: */
+                if ((screen_buffer[i] = (GifRowType) malloc(row_size)) == NULL){
+                    DP_ERR("%s:malloc failed.\n",__func__);
+                    DGifCloseFile(gif_file,&err);
+                    for( ; --i >=0 ; ){
+                        free(screen_buffer[i]);
+                    }
+                    free(screen_buffer);
+                    goto exit;
+                }
+                    
+                memcpy(screen_buffer[i], screen_buffer[0], row_size);
+            }
+        }else{
+            gif_file = thread_data->gif_file;
+            screen_buffer = thread_data->screen_buf;
+        }
+        
+        pthread_mutex_lock(&view_pic_priv->gif_cache_mutex);
+        pic_cache = *view_pic_priv->pic_cache;
+        pthread_mutex_unlock(&view_pic_priv->gif_cache_mutex);
+
+        /* 循环获取gif图像 */
+        do{
+            if(DGifGetRecordType(gif_file,&recoder_type)==GIF_ERROR){
+                err = -1;
+                goto release_screen_buffer;
+            }
+            
+            switch(recoder_type){
+            case IMAGE_DESC_RECORD_TYPE:
+                if(DGifGetImageDesc(gif_file)==GIF_ERROR){
+                    err = -1;
+                    goto release_screen_buffer;
+                }
+                row     = gif_file->Image.Top;
+                col     = gif_file->Image.Left;
+                width   = gif_file->Image.Width;
+                height  = gif_file->Image.Height;
+                
+                if(col + width > gif_file->SWidth || row + height > gif_file->SHeight){
+                    DP_ERR("%s:gif %s image 1 not confined to screen dimension\n",__func__,thread_data->file_name);
+                    err = -1;
+                    goto release_screen_buffer;
+                }
+                
+                if(gif_file->Image.Interlace){
+                    for (i = 0; i < 4; i++){
+                        for (j = row + interlaced_offset[i]; j < row + height; j += interlaced_jumps[i]) {
+                            if (DGifGetLine(gif_file, &screen_buffer[j][col], width) == GIF_ERROR) {
+                                DP_ERR("%s:gif get line failed\n",__func__);
+                                err = -1;
+                                goto release_screen_buffer;
+                            }
+                        }
+                    }
+                }else{
+                    for(i = 0 ; i < height ; i++){
+                        DGifGetLine(gif_file,&screen_buffer[row++][col],width);
+                    }
+                }
+                 
+                color_map = (gif_file->Image.ColorMap ? gif_file->Image.ColorMap : gif_file->SColorMap);
+                if(color_map==NULL){
+                    DP_ERR("%s:Gif Image does not have a color_map\n",__func__);
+                    err = -1;
+                    goto release_screen_buffer;
+                }
+                 
+                /* 将数据转换为ARGB数据并报存，保留透明度属性，即bpp为32 */
+                if(NULL == (frame_data = malloc(sizeof(struct gif_frame_data)))){
+                    DP_ERR("%s:malloc failed!\n",__func__);
+                    err = -ENOMEM;
+                    goto release_screen_buffer;
+                }
+                memset(frame_data,0,sizeof(struct gif_frame_data));
+                frame_data->data.width = gif_file->SWidth;
+                frame_data->data.height = gif_file->SHeight;
+                frame_data->data.bpp = 32;
+                frame_data->data.has_alpha = 1;
+                frame_data->data.line_bytes = frame_data->data.width * frame_data->data.bpp / 2;
+                frame_data->data.total_bytes = frame_data->data.line_bytes * frame_data->data.height;
+                if((frame_data->data.buf = malloc(frame_data->data.total_bytes)) == NULL){
+                    DP_ERR("%s:malloc failed\n",__func__);
+                    err = -ENOMEM;
+                    free(frame_data);
+                    goto release_screen_buffer;
+                }
+                for(i = 0 ; i < gif_file->SHeight ; i++){
+                    gif_row_buf = screen_buffer[i];
+                    rgb_line_buf = frame_data->data.buf + i * frame_data->data.line_bytes;
+                    for(j = 0 ; j < gif_file->SWidth ; j++){
+                        color_map_entry = &color_map->Colors[gif_row_buf[j]];
+                        *rgb_line_buf++ = 0xff;
+                        *rgb_line_buf++ = color_map_entry->Blue;
+                        *rgb_line_buf++ = color_map_entry->Green;
+                        *rgb_line_buf++ = color_map_entry->Red;  
+                    }
+                } 
+
+                /* 将数据记录到线程管理的数据链表中 */
+                if(!thread_data->frame_data){
+                    thread_data->frame_data = frame_data;
+                    thread_data->frame_data_tail = frame_data;
+                }else{
+                    thread_data->frame_data_tail->next = frame_data;
+                    thread_data->frame_data_tail = frame_data;
+                }
+                
+                /* 显示数据，检查此线程处理的文件是否为当前正显示的文件，如果是则显示，如果不是则进入销毁阶段 */
+                if(*view_pic_priv->cur_gif_file == thread_data->file_name){
+                    /* 相同则显示，先按大小缩放 */
+                    if(pic_cache->has_data && pic_cache->data.buf){
+                        free(pic_cache->data.buf);
+                        pic_cache->data.buf = NULL;
+                        pic_cache->data.in_rows = 0;
+                        pic_cache->data.rows_buf = NULL;
+                        pic_cache->has_data = 0;
+                    }
+                    pic_zoom_with_same_bpp(&pic_cache->data,&frame_data->data);
+                    pic_cache->has_data = 1;
+                    fill_pic_func = view_pic_priv->fill_main_pic_area;
+                    pthread_mutex_lock(&view_pic_priv->page_mem_mutex);
+                    if((err = fill_pic_func(view_pic_page))){
+                        goto release_frame_data;
+                    }
+                    flush_page_region(&view_pic_page->page_layout.regions[5],display);
+                    pthread_mutex_unlock(&view_pic_priv->page_mem_mutex);
+                }else{
+                    /* 否则进入销毁过程 */
+                    goto release_frame_data;
+                }
+                break;
+            case EXTENSION_RECORD_TYPE:
+                /* 跳过文件中的所有扩展块*/
+                if(DGifGetExtension(gif_file,&err,&extension)==GIF_ERROR)break;
+                while(extension!=NULL){
+                    if(DGifGetExtensionNext(gif_file, &extension) == GIF_ERROR)break;
+                }
+                break;
+                
+            case TERMINATE_RECORD_TYPE:
+                break;
+            default:
+                break;
+            }
+		}while(recoder_type != TERMINATE_RECORD_TYPE);
+
+        /* 如果运行到这里，说明图片已经播放过一遍了，此时数据已缓存，可以从缓存中循环读取数据了 */
+        /* 关闭文件，释放屏幕内存 */
+        for(i = 0 ; i < gif_file->SHeight ; i++){
+            free(screen_buffer[i]);
+        }
+        free(screen_buffer);
+        DGifCloseFile(gif_file,&err);
+
+        /* 在一个循环中循环播放已缓存的图片 */
+        frame_data = thread_data->frame_data;
+        while(frame_data){
+            /* 显示数据，检查此线程处理的文件是否为当前正显示的文件，如果是则显示，如果不是则进入销毁阶段 */
+            if(*view_pic_priv->cur_gif_file == thread_data->file_name){
+                /* 相同则显示，先按大小缩放 */
+                if(pic_cache->has_data){
+                    free(pic_cache->data.buf);
+                    pic_cache->data.buf = NULL;
+                    pic_cache->data.in_rows = 0;
+                    pic_cache->data.rows_buf = NULL;
+                    pic_cache->has_data = 0;
+                }
+                pic_zoom_with_same_bpp(&pic_cache->data,&frame_data->data);
+                pic_cache->has_data = 1;
+                fill_pic_func = view_pic_priv->fill_main_pic_area;
+                pthread_mutex_lock(&view_pic_priv->page_mem_mutex);
+                if((err = fill_pic_func(view_pic_page))){
+                    goto release_frame_data;
+                }
+                flush_page_region(&view_pic_page->page_layout.regions[5],display);
+                pthread_mutex_unlock(&view_pic_priv->page_mem_mutex);
+            }else{
+                /* 否则进入销毁过程 */
+                break;
+            }
+            
+            if(frame_data->next){
+                frame_data = frame_data->next;
+            }else{
+                frame_data = thread_data->frame_data;
+            }
+        }
+
+release_frame_data:
+        frame_temp = thread_data->frame_data;
+        while(frame_temp){
+            if(frame_temp->data.buf)
+                free(frame_temp->data.buf);
+            thread_data->frame_data = frame_temp->next;
+            free(frame_temp);
+            frame_temp = thread_data->frame_data;
+        }
+        memset(thread_data,0,sizeof(struct gif_thread_data));
+release_screen_buffer:
+        for(i = 0 ; i < gif_file->SHeight ; i++){
+            free(screen_buffer[i]);
+        }
+        free(screen_buffer);
+        DGifCloseFile(gif_file,&err);
+exit:
+        free(thread_data->file_name);
+        memset(thread_data,0,sizeof(*thread_data));
+        thread_pool->idle_thread++;
+    }
+
+    return NULL;
 }
 
 static int gif_picfmt_init(void)
@@ -242,19 +540,20 @@ static int gif_picfmt_init(void)
     int i,ret;
 
     /* 初始化线程池 */
-    if((thread_pool = malloc(sizeof(thread_pool))) == NULL){
+    if((thread_pool = malloc(sizeof(struct gif_thread_pool))) == NULL){
         DP_ERR("%s:malloc failed\n",__func__);
         return -ENOMEM;
     }
-    memset(thread_pool,0,sizeof(thread_pool));
+    memset(thread_pool,0,sizeof(struct gif_thread_pool));
 
     /* 创建线程 */
     for(i = 0 ; i < THREAD_NUMS ; i++){
-        if(ret = pthread_create(&thread_pool->tids[i],NULL,gif_thread_func,NULL)){
+        if((ret = pthread_create(&thread_pool->tids[i],NULL,gif_thread_func,thread_pool))){
             DP_ERR("%s:create thread failed!\n",__func__);
             goto err;
         }
     }
+    thread_pool->idle_thread = THREAD_NUMS;
     /* 初始化同步量 */
     if(pthread_cond_init(&thread_pool->task_cond,NULL) || pthread_cond_init(&thread_pool->thread_cond,NULL) ||
        pthread_mutex_init(&thread_pool->pool_mutex,NULL)){

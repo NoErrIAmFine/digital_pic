@@ -7,11 +7,15 @@ static struct picfmt_parser *picfmt_parser_list;
 
 int register_picfmt_parser(struct picfmt_parser *parser)
 {
+    int ret;
+
     struct picfmt_parser *temp;
     if(!picfmt_parser_list){
         picfmt_parser_list = parser;
         parser->next = NULL;
-        return 0;
+        if(parser->init)
+            ret = parser->init();
+        return ret;
     }else{
         temp = picfmt_parser_list;
         /* 不允许同名 */
@@ -28,7 +32,9 @@ int register_picfmt_parser(struct picfmt_parser *parser)
         }
         temp->next = parser;
         parser->next = NULL;
-        return 0;
+        if(parser->init)
+            ret = parser->init();
+        return ret;
     }
 }
 

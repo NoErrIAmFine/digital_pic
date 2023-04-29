@@ -14,12 +14,15 @@ static struct page_struct interval_page;
 static int interval;                    /* 表示间隔 */
 static int font_size;                   /* 间隔数字的大小 */
 
-/* 区域的宏定义 */
-#define REGION_INCREASE         0
-#define REGION_TIME             1
-#define REGION_DECREASE         2
-#define REGION_RETURN           3
-#define REGION_SAVE             4
+/* 用于给区域编号的枚举 */
+enum region_info{
+    REGION_INCREASE = 0,
+    REGION_TIME,    
+    REGION_DECREASE,
+    REGION_RETURN,  
+    REGION_SAVE,
+    REGION_NUMS,
+};    
 
 /* 以下是本页面要用到的图标信息 */
 enum icon_info{
@@ -30,6 +33,7 @@ enum icon_info{
     ICON_SAVE,
     ICON_NUMS,
 };
+
 /* 图标文件名字符串数组 */
 static const char *icon_file_names[] = {
     [ICON_INCREASE]         = "interval_inc.png",
@@ -38,6 +42,16 @@ static const char *icon_file_names[] = {
     [ICON_RETURN]           = "interval_return.png",
     [ICON_SAVE]             = "interval_save.png", 
 };
+
+/* 图标对应的区域，数组下标表示图标编号，下标对应的数组项表示该图标对应的区域,用于缩放图标 */
+static const int icon_region_links[] = {
+    [ICON_INCREASE]         = REGION_INCREASE,
+    [ICON_TIME_BACKGROUND]  = REGION_TIME,
+    [ICON_DECREASE]         = REGION_DECREASE,
+    [ICON_RETURN]           = REGION_RETURN,
+    [ICON_SAVE]             = REGION_SAVE,
+};
+
 static struct pixel_data icon_pixel_datas[ICON_NUMS];
 
 /* 比较两个timeval的差值，以ms为单位 */
@@ -52,40 +66,6 @@ static int timeval_diff_ms(struct timeval * tv0, struct timeval * tv1)
     if (time1 < 0)
         time1 = -time1;
     return time1;
-}
-
-static int prepare_icon_pixel_datas(struct page_struct *interval_page)
-{
-    int i,ret;
-    struct page_region *regions = interval_page->page_layout.regions;
-    struct pixel_data temp;
-
-    if(interval_page->icon_prepared){
-        return 0;
-    }
-
-    /* 获取初始数据 */
-    ret = get_icon_pixel_datas(icon_pixel_datas,icon_file_names,ICON_NUMS);
-    if(ret){
-        DP_ERR("%s:get_icon_pixel_datas failed\n",__func__);
-        return ret;
-    }
-
-    /* 缩放至合适大小,考虑到本页面图标与区域一一对应，直接用循环即可 */
-    for(i = 0 ; i < ICON_NUMS ; i++){
-        memset(&temp,0,sizeof(struct pixel_data));
-        temp.width  = regions[i].width;
-        temp.height = regions[i].height;
-        ret = pic_zoom_with_same_bpp(&temp,&icon_pixel_datas[i]);
-        if(ret){
-            DP_ERR("%s:pic_zoom_with_same_bpp failed\n",__func__);
-            return ret;
-        }
-        free(icon_pixel_datas[i].buf);
-        icon_pixel_datas[i] = temp;
-    }
-    interval_page->icon_prepared = 1;
-    return 0;
 }
 
 static int destory_icon_pixel_datas(struct page_struct *interval_page)
@@ -251,7 +231,7 @@ static int interval_page_fill_layout(struct page_struct *interval_page)
 
     /* 准备图标数据 */
     if(!interval_page->icon_prepared){
-        ret = prepare_icon_pixel_datas(interval_page);
+        ret = prepare_icon_pixel_datas(interval_page,icon_pixel_datas,icon_file_names,icon_region_links,ICON_NUMS);
         if(ret){
             DP_ERR("%s:prepare_icon_pixel_datas failed!\n",__func__);
             return ret;
@@ -405,7 +385,7 @@ static int interval_page_run(struct page_param *pre_page_param)
 
     /* 准备图标数据 */
     if(!interval_page.icon_prepared){
-        ret = prepare_icon_pixel_datas(&interval_page);
+        ret = prepare_icon_pixel_datas(&interval_page,icon_pixel_datas,icon_file_names,icon_region_links,ICON_NUMS);
         if(ret){
             DP_ERR("%s:prepare_icon_pixel_datas failed!\n",__func__);
             return ret;

@@ -536,7 +536,7 @@ static void destroy_icon_pixel_data(void)
 static void browse_page_exit(void)
 {
     /* 释放占用的内存 */
-    if(browse_page.allocated){
+    if(browse_page.allocated && !browse_page.share_fbmem){
         free(browse_page.page_mem.buf);
     }
 
@@ -1161,14 +1161,16 @@ static int browse_page_run(struct page_param *pre_param)
     DP_ERR("enter:%s\n",__func__);
     /* 为该页面分配一块内存 */
     if(!browse_page.allocated){
-        browse_page.page_mem.buf = malloc(browse_page.page_mem.total_bytes);
-        if(!browse_page.page_mem.buf){
-            DP_ERR("%s:malloc failed!\n",__func__);
-            return -1;
-        }
-        browse_page.allocated = 1;
+        /* 直接将页面对应的内存映射到显存上，省的多一道复制 */
+        browse_page.page_mem.bpp         = default_display->bpp;
+        browse_page.page_mem.width       = default_display->xres;
+        browse_page.page_mem.height      = default_display->yres;
+        browse_page.page_mem.line_bytes  = browse_page.page_mem.width * browse_page.page_mem.bpp / 8;
+        browse_page.page_mem.total_bytes = browse_page.page_mem.line_bytes * browse_page.page_mem.height; 
+        browse_page.page_mem.buf         = default_display->buf;
+        browse_page.allocated            = 1;
+        browse_page.share_fbmem          = 1;
     }
-    
     /* 注意，页面布局在注册该页面时，在初始化函数中已经计算好了 */
 
     /* 将划分的显示区域映射到相应的页面对应的内存中 */

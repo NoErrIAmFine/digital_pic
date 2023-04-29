@@ -18,7 +18,7 @@
 
 static struct page_struct text_page;
 
-/* 用于表示区域信息的枚举 */
+/* 用于给区域编号的枚举 */
 enum region_info{
     REGION_MAIN_TEXT,               /* 显示文本的主体区域 */
     REGION_BOTTOM_INFO,             /* 底部信息区域，显示进度、时间、电量等 */
@@ -135,41 +135,6 @@ static struct page_pos *cur_page_pos;
 
 static bool menu_show_status = 0;           /* 说明当前正在展示菜单 */
 static int format_select_status = 0;        /* 表示当前选中了格式菜单的哪个子菜单，取值为1和2 */
-
-static int prepare_icon_pixel_datas(struct page_struct *text_page)
-{
-    int i,ret;
-    struct page_region *regions = text_page->page_layout.regions;
-    struct pixel_data temp;
-
-    if(text_page->icon_prepared){
-        return 0;
-    }
-
-    /* 获取初始数据 */
-    ret = get_icon_pixel_datas(icon_pixel_datas,icon_file_names,ICON_NUMS);
-    if(ret){
-        DP_ERR("%s:get_icon_pixel_datas failed\n",__func__);
-        return ret;
-    }
-
-    /* 缩放至合适大小 */
-    for(i = 0 ; i < ICON_NUMS ; i++){
-        memset(&temp,0,sizeof(struct pixel_data));
-        temp.width  = regions[icon_region_links[i]].width;
-        temp.height = regions[icon_region_links[i]].height;
-        ret = pic_zoom_with_same_bpp(&temp,&icon_pixel_datas[i]);
-        if(ret){
-            DP_ERR("%s:pic_zoom_with_same_bpp failed\n",__func__);
-            return ret;
-        }
-        free(icon_pixel_datas[i].buf);
-        icon_pixel_datas[i] = temp;
-    }
-
-    text_page->icon_prepared = 1;
-    return 0;
-}
 
 /* 计算格式菜单的布局 */
 static int calc_format_menu_layout(struct page_struct *text_page)
@@ -613,7 +578,7 @@ static int text_page_fill_layout(struct page_struct *text_page)
 
     /* 准备图标数据 */
     if(!text_page->icon_prepared){
-        ret = prepare_icon_pixel_datas(text_page);
+        ret = prepare_icon_pixel_datas(text_page,icon_pixel_datas,icon_file_names,icon_region_links,ICON_NUMS);
         if(ret){
             DP_ERR("%s:prepare_icon_pixel_datas failed!\n",__func__);
             return ret;
@@ -1360,7 +1325,7 @@ static int text_page_run(struct page_param *pre_page_param)
     printf("%s-%d\n",__func__,__LINE__);
     /* 准备图标数据 */
     if(!text_page.icon_prepared){
-        ret = prepare_icon_pixel_datas(&text_page);
+        ret = prepare_icon_pixel_datas(&text_page,icon_pixel_datas,icon_file_names,icon_region_links,ICON_NUMS);
         if(ret){
             DP_ERR("%s:prepare_icon_pixel_datas failed!\n",__func__);
             return ret;

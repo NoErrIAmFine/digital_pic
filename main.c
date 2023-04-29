@@ -23,10 +23,10 @@ int main(int argc,char *argv[])
     font_decoder_init();
     show_font_render();
     display_init();
-    
+    page_init();
     picfmt_parser_init();
     input_init();
-    page_init();
+    
 
     page = get_page_by_name("main_page");
 

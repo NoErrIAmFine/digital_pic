@@ -12,13 +12,16 @@
 
 static struct page_struct main_page;
 
-/* 区域的宏定义 */
-#define REGION_BROWSE_ICON      0
-#define REGION_BROWSE_TEXT      1
-#define REGION_AUTOPLAY_ICON    2
-#define REGION_AUTOPLAY_TEXT    3
-#define REGION_SETTING_ICON     4   
-#define REGION_SETTING_TEXT     5
+/* 用于给区域编号的枚举 */
+enum region_info{
+    REGION_BROWSE_ICON = 0, 
+    REGION_BROWSE_TEXT,  
+    REGION_AUTOPLAY_ICON,
+    REGION_AUTOPLAY_TEXT,
+    REGION_SETTING_ICON, 
+    REGION_SETTING_TEXT, 
+    REGION_NUMS,
+};
 
 /* 以下是本页面要用到的图标信息 */
 enum icon_info{
@@ -27,47 +30,21 @@ enum icon_info{
     ICON_SETTING,
     ICON_NUMS,
 };
+
 /* 图标文件名字符串数组 */
 static const char *icon_file_names[] = {
     [ICON_BROWSE_MODE]      = "browse_mode.png",
     [ICON_AUTO_PLAY_MODE]   = "periodic_mode.png",
     [ICON_SETTING]          = "setting.png",
 };
+
+/* 图标对应的区域，数组下标表示图标编号，下标对应的数组项表示该图标对应的区域,用于缩放图标 */
+static const int icon_region_links[] = {
+    [ICON_BROWSE_MODE]      = REGION_BROWSE_ICON,
+    [ICON_AUTO_PLAY_MODE]   = REGION_AUTOPLAY_ICON,
+    [ICON_SETTING]          = REGION_SETTING_ICON,
+};
 static struct pixel_data icon_pixel_datas[ICON_NUMS];
-
-static int prepare_icon_pixel_datas(struct page_struct *main_page)
-{
-    int i,ret;
-    struct page_region *regions = main_page->page_layout.regions;
-    struct pixel_data temp;
-
-    if(main_page->icon_prepared){
-        return 0;
-    }
-
-    /* 获取初始数据 */
-    ret = get_icon_pixel_datas(icon_pixel_datas,icon_file_names,ICON_NUMS);
-    if(ret){
-        DP_ERR("%s:get_icon_pixel_datas failed\n",__func__);
-        return ret;
-    }
-
-    /* 缩放至合适大小,考虑到本页面用到的图标大小都相同，直接用循环不挨个赋值了 */
-    for(i = 0 ; i < ICON_NUMS ; i++){
-        memset(&temp,0,sizeof(struct pixel_data));
-        temp.width  = regions[REGION_BROWSE_ICON].width;
-        temp.height = regions[REGION_BROWSE_ICON].height;
-        ret = pic_zoom_with_same_bpp(&temp,&icon_pixel_datas[i]);
-        if(ret){
-            DP_ERR("%s:pic_zoom_with_same_bpp failed\n",__func__);
-            return ret;
-        }
-        free(icon_pixel_datas[i].buf);
-        icon_pixel_datas[i] = temp;
-    }
-    main_page->icon_prepared = 1;
-    return 0;
-}
 
 /* 在此函数中将会计算好页面的布局情况 */
 static int main_page_init(void)
@@ -259,7 +236,7 @@ static int main_page_fill_layout(struct page_struct *main_page)
 
     /* 准备图标数据 */
     if(!main_page->icon_prepared){
-        ret = prepare_icon_pixel_datas(main_page);
+        ret = prepare_icon_pixel_datas(main_page,icon_pixel_datas,icon_file_names,icon_region_links,ICON_NUMS);
         if(ret){
             DP_ERR("%s:prepare_icon_pixel_datas failed!\n",__func__);
             return ret;
@@ -338,7 +315,7 @@ static int main_page_run(struct page_param *pre_page_param)
 
     /* 准备图标数据 */
     if(!main_page.icon_prepared){
-        ret = prepare_icon_pixel_datas(&main_page);
+        ret = prepare_icon_pixel_datas(&main_page,icon_pixel_datas,icon_file_names,icon_region_links,ICON_NUMS);
         if(ret){
             DP_ERR("%s:prepare_icon_pixel_datas failed!\n",__func__);
             return ret;

@@ -76,6 +76,31 @@ struct page_struct
     unsigned int icon_prepared:1;
 };
 
+/* 用于 view pic 页面，表示一个图片缓存 */
+struct pic_cache
+{
+    short virtual_x;        //图片在虚拟显示空间中的右上角座标，这个空间是可以超出显示屏的
+    short virtual_y;
+    short orig_width;       //图片原始宽度
+    short orig_height;      //图片原始高度
+    short angle;            //缓存中图片的角度，可能的取值:0,90,180,270
+    struct pixel_data data;
+    void *orig_data;
+    unsigned int has_data:1;        //标志位，说明缓存中是否有数据
+    unsigned int has_orig_data:1;   //标志位，表明缓存中是否含有原始数据
+    unsigned int is_gif:1;          //是否是一张gif图？
+};
+
+/* view pic 页面用到的私有结构 */
+struct view_pic_private
+{
+    char **cur_gif_file;
+    pthread_mutex_t page_mem_mutex;
+    struct pic_cache **pic_cache;
+    pthread_mutex_t gif_cache_mutex;
+    int (*fill_main_pic_area)(struct page_struct *page);
+};
+
 /* 专用于autoplay页面，用于从其他页面接收连播目录和连播间隔信息 */
 struct autoplay_private
 {
@@ -107,7 +132,8 @@ int flush_page_region(struct page_region*,struct display_struct *);
 unsigned int calc_page_id(const char *);
 int remap_regions_to_page_mem(struct page_struct *page);
 int unmap_regions_to_page_mem(struct page_struct *page);
-int get_icon_pixel_datas(struct pixel_data *icon_datas,const char **icon_names,int icon_num);
+int prepare_icon_pixel_datas(struct page_struct *page,struct pixel_data *icon_datas,
+                                    const char **icon_names,const int icon_region_links[],int icon_num);
 void destroy_icon_pixel_datas(struct page_struct *page,struct pixel_data *icon_datas,int icon_num);
 int invert_region(struct pixel_data *);
 int press_region(struct page_region *region,int press,int pattern);

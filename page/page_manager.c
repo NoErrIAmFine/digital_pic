@@ -7,6 +7,7 @@
 #include "page_manager.h"
 #include "debug_manager.h"
 #include "picfmt_manager.h"
+#include "pic_operation.h"
 #include "file.h"
 
 static struct page_struct *page_list;
@@ -336,7 +337,7 @@ int get_pic_pixel_data(const char *pic_file,char file_type,struct pixel_data *pi
 }
 
 /* 准备图标数据，只支持png格式文件，将图标原样读出，不进行缩放 */
-int get_icon_pixel_datas(struct pixel_data *icon_datas,const char **icon_names,int icon_num)
+static int get_icon_pixel_datas(struct pixel_data *icon_datas,const char **icon_names,int icon_num)
 {
     int i,j,ret;
     struct picfmt_parser *png_parser = get_parser_by_name("png");
@@ -394,6 +395,47 @@ free_icon_data:
         memset(&icon_datas[i],0,sizeof(struct pixel_data));
     }
     return ret;
+}
+
+/* 为一个页面准备好图标数据 */
+int prepare_icon_pixel_datas(struct page_struct *page,struct pixel_data *icon_datas,
+                                    const char **icon_names,const int icon_region_links[],int icon_num)
+{
+    int i,ret;
+    struct page_region *regions = page->page_layout.regions;
+    struct pixel_data temp;
+
+    if(page->icon_prepared){
+        return 0;
+    }
+    if(!page->already_layout){
+        DP_ERR("%s:page has not calculate layout!\n",__func__);
+        return -1;
+    }
+
+    /* 获取初始数据 */
+    ret = get_icon_pixel_datas(icon_datas,icon_names,icon_num);
+    if(ret){
+        DP_ERR("%s:get_icon_pixel_datas failed\n",__func__);
+        return ret;
+    }
+
+    /* 缩放至合适大小 */
+    for(i = 0 ; i < icon_num ; i++){
+        memset(&temp,0,sizeof(struct pixel_data));
+        temp.width  = regions[icon_region_links[i]].width;
+        temp.height = regions[icon_region_links[i]].height;
+        ret = pic_zoom_with_same_bpp(&temp,&icon_datas[i]);
+        if(ret){
+            DP_ERR("%s:pic_zoom_with_same_bpp failed\n",__func__);
+            return ret;
+        }
+        free(icon_datas[i].buf);
+        icon_datas[i] = temp;
+    }
+
+    page->icon_prepared = 1;
+    return 0;
 }
 
 void destroy_icon_pixel_datas(struct page_struct *page,struct pixel_data *icon_datas,int icon_num)

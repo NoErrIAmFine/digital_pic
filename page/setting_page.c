@@ -13,9 +13,12 @@
 static struct page_struct setting_page;
 
 /* 区域的宏定义 */
-#define REGION_SELECT_DIR   0
-#define REGION_SET_INTERVAL 1
-#define REGION_RETURN       2
+enum region_info{
+    REGION_SELECT_DIR = 0,
+    REGION_SET_INTERVAL,
+    REGION_RETURN,
+    REGION_NUMS,    
+};
 
 /* 以下是本页面要用到的图标信息 */
 enum icon_info{
@@ -24,47 +27,22 @@ enum icon_info{
     ICON_RETURN,
     ICON_NUMS,
 };
+
 /* 图标文件名字符串数组 */
 static const char *icon_file_names[] = {
     [ICON_SELECT_DIR]     = "setting_select_dir.png",
     [ICON_SET_INTERVAL]   = "setting_set_interval.png",
     [ICON_RETURN]         = "setting_return.png",
 };
+
+/* 图标对应的区域，数组下标表示图标编号，下标对应的数组项表示该图标对应的区域,用于缩放图标 */
+static const int icon_region_links[] = {
+    [ICON_SELECT_DIR]     = REGION_SELECT_DIR,
+    [ICON_SET_INTERVAL]   = REGION_SET_INTERVAL,
+    [ICON_RETURN]         = REGION_RETURN,
+};
+
 static struct pixel_data icon_pixel_datas[ICON_NUMS];
-
-static int prepare_icon_pixel_datas(struct page_struct *setting_page)
-{
-    int i,ret;
-    struct page_region *regions = setting_page->page_layout.regions;
-    struct pixel_data temp;
-
-    if(setting_page->icon_prepared){
-        return 0;
-    }
-
-    /* 获取初始数据 */
-    ret = get_icon_pixel_datas(icon_pixel_datas,icon_file_names,ICON_NUMS);
-    if(ret){
-        DP_ERR("%s:get_icon_pixel_datas failed\n",__func__);
-        return ret;
-    }
-
-    /* 缩放至合适大小,考虑到本页面用到的图标大小都相同，直接用循环不挨个赋值了 */
-    for(i = 0 ; i < ICON_NUMS ; i++){
-        memset(&temp,0,sizeof(struct pixel_data));
-        temp.width  = regions[REGION_SELECT_DIR].width;
-        temp.height = regions[REGION_SELECT_DIR].height;
-        ret = pic_zoom_with_same_bpp(&temp,&icon_pixel_datas[i]);
-        if(ret){
-            DP_ERR("%s:pic_zoom_with_same_bpp failed\n",__func__);
-            return ret;
-        }
-        free(icon_pixel_datas[i].buf);
-        icon_pixel_datas[i] = temp;
-    }
-    setting_page->icon_prepared = 1;
-    return 0;
-}
 
 /* 在此函数中将会计算好页面的布局情况 */
 static int setting_page_init(void)
@@ -108,8 +86,6 @@ static int setting_page_init(void)
             regions[i].y_pos = y_cursor + i * (unit_distance * 3 / 2);
             regions[i].height = unit_distance;
             regions[i].width = unit_distance * 3;
-            printf("regions[i].x_pos:%d,regions[i].y_pos:%d\n",regions[i].x_pos,regions[i].y_pos);
-            printf("regions[i].height:%d,regions[i].width:%d\n",regions[i].height,regions[i].width);
         }
     }else{
         /* 横屏 */
@@ -172,7 +148,7 @@ static int setting_page_fill_layout(struct page_struct *setting_page)
 
     /* 准备图标数据 */
     if(!setting_page->icon_prepared){
-        ret = prepare_icon_pixel_datas(setting_page);
+        ret = prepare_icon_pixel_datas(setting_page,icon_pixel_datas,icon_file_names,icon_region_links,ICON_NUMS);
         if(ret){
             DP_ERR("%s:prepare_icon_pixel_datas failed!\n",__func__);
             return ret;
@@ -258,7 +234,7 @@ static int setting_page_run(struct page_param *pre_page_param)
         setting_page.allocated            = 1;
         setting_page.share_fbmem          = 1;
     }
-
+    printf("%s-%d\n",__func__,__LINE__);
     /* 将划分的显示区域映射到相应的页面对应的内存中 */
     if(!setting_page.region_mapped){
         ret = remap_regions_to_page_mem(&setting_page);
@@ -267,23 +243,23 @@ static int setting_page_run(struct page_param *pre_page_param)
             return ret;
         }
     }
-
+    printf("%s-%d\n",__func__,__LINE__);
     /* 准备图标数据 */
     if(!setting_page.icon_prepared){
-        ret = prepare_icon_pixel_datas(&setting_page);
+        ret = prepare_icon_pixel_datas(&setting_page,icon_pixel_datas,icon_file_names,icon_region_links,ICON_NUMS);
         if(ret){
             DP_ERR("%s:prepare_icon_pixel_datas failed!\n",__func__);
             return ret;
         }
     }
-    
+    printf("%s-%d\n",__func__,__LINE__);
     /* 填充页面 */
     ret = setting_page_fill_layout(&setting_page);
     if(ret){
         DP_ERR("%s:setting_page_fill_layout failed!\n",__func__);
         return ret;
     }   
-    
+    printf("%s-%d\n",__func__,__LINE__);
     /* 因为页面与显存共享一块内存，所以不用刷新 */
     
     /* 检测输入事件的循环 */

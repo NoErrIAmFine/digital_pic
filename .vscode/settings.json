@@ -15,6 +15,11 @@
         "*.tcc": "c",
         "fstream": "c",
         "fcntl.h": "c",
-        "stdlib.h": "c"
+        "stdlib.h": "c",
+        "gif_lib.h": "c"
+    },
+    "files.exclude": {
+        "**/*.o": true,
+        "**/*.d": true,
     }
 }

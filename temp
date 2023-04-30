@@ -3,3 +3,5 @@ sudo cp show_file /home/luo/mnt/nfs/rootfs/home/luo/app
 ./show_file -f  /usr/share/fonts/DENGB.TTF 从零开始的穿越生涯.txt
 
 printf("%s-%d\n",__func__,__LINE__);
+
+printf("tid:%04d-%s-%d\n",(int)pthread_self(),__func__,__LINE__);

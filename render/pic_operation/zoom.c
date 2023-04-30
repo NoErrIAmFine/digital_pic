@@ -2,6 +2,7 @@
 #include "pic_operation.h"
 
 #include <errno.h>
+#include <string.h>
 #include <stdlib.h>
 
 /* @description : 缩放图像，且只能缩小
@@ -292,9 +293,19 @@ int pic_zoom_with_same_bpp(struct pixel_data *dst_data,struct pixel_data *src_da
     unsigned int y_src,i,j,k,bytes_per_pixel;
     unsigned int x_scale_table[dst_data->width];
     unsigned int temp;
-    /* 判断条件 */
-    if(dst_data->width > src_data->width || dst_data->height > src_data->height || \
-       ((dst_data->bpp != 0) && (dst_data->bpp != src_data->bpp))){
+
+    /* 判断条件,如果要求的目的图像比原图像还大，则不缩放，直接复制一份原图像 */
+    if(dst_data->width > src_data->width || dst_data->height > src_data->height){
+        *dst_data = *src_data;
+        if(NULL == (dst_data = malloc(dst_data->total_bytes))){
+            DP_ERR("%s:malloc failed!\n",__func__);
+            return -ENOMEM;
+        }
+        memcpy(dst_data->buf,src_data->buf,dst_data->total_bytes);
+        return 0;
+    } 
+    /* 此函数只支持相同的bpp */
+    if((dst_data->bpp != 0) && (dst_data->bpp != src_data->bpp)){
         DP_ERR("%s:invalid argument!\n",__func__);
         return -1;
     }

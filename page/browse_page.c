@@ -642,6 +642,9 @@ static int fill_file_dir_area(struct page_struct *browse_page)
     base_icon_index = ICON_FILETYPE_DIR;
     font_size = regions[base_region_index + 1].height;
    
+    /* 先清理 */
+    clear_pixel_data(regions[REGION_MAIN_FILE_DIR].pixel_data,BACKGROUND_COLOR);
+
     /* 需要注意的一点,对于填充内容而言,一个目录项对应两个区域,一个图标,一个文字 */
     for(i = 0 ; i < files_per_page ; i++){
         if((start_file_index + i) >= cur_dirent_nums){
@@ -901,8 +904,8 @@ static int save_autoplay_dir_menu_cb_func(void)
             selected_dirs[i] = NULL;
         }
     }
-    *(unsigned long *)&auto_priv[max_selected_dir] = j;printf("%s-%d\n",__func__,__LINE__);
-    enable_dir_select_status(&browse_page,0);printf("%s-%d\n",__func__,__LINE__);
+    *(unsigned long *)&auto_priv[max_selected_dir] = j;
+    enable_dir_select_status(&browse_page,0);
 
     return 0;
 }
@@ -1154,7 +1157,7 @@ static int browse_page_run(struct page_param *pre_param)
     unsigned int selected_file_index;
     unsigned int dir_select_region_base = REGION_FILE_DIR_BASE + 3 * files_per_page;
     unsigned int pre_page_id = pre_param->id;
-    struct display_struct *default_display;
+    struct display_struct *default_display = get_default_display();
     struct page_region *regions;
     struct page_struct *next_page;
     struct page_param page_param;
@@ -1172,7 +1175,7 @@ static int browse_page_run(struct page_param *pre_param)
         browse_page.share_fbmem          = 1;
     }
     /* 注意，页面布局在注册该页面时，在初始化函数中已经计算好了 */
-
+    
     /* 将划分的显示区域映射到相应的页面对应的内存中 */
     if(!browse_page.region_mapped){
         ret = remap_regions_to_page_mem(&browse_page);
@@ -1183,9 +1186,6 @@ static int browse_page_run(struct page_param *pre_param)
         browse_page.region_mapped = 1;
     }
     
-    /* 将页面清为白色 */
-    clear_pixel_data(&browse_page.page_mem,BACKGROUND_COLOR);
-
     /* 获取目录结构,注意,每到重新运行该run函数,总是从根目录开始显示 */
     if(cur_dir_contents){
         free_dir_contents(cur_dir_contents,cur_dirent_nums);
@@ -1213,7 +1213,7 @@ static int browse_page_run(struct page_param *pre_param)
     if(pre_param->id == calc_page_id("autoplay_page")){
         enable_dir_select_status(&browse_page,1);
     }
-
+    
     /* 填充各区域 */
     ret = browse_page_fill_layout(&browse_page);
     if(ret){

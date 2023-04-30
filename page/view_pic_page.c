@@ -45,7 +45,8 @@ enum icon_info{
     ICON_MENU_ZOOM_OUT,     
     ICON_MENU_LEFT_ROTATE,  
     ICON_MENU_RIGHT_ROTATE, 
-    ICON_MENU_PIC_RESET,         
+    ICON_MENU_PIC_RESET, 
+    ICON_LOAD_ERR,        
     ICON_NUMS, 
 };
 
@@ -62,6 +63,7 @@ static const char *icon_file_names[ICON_NUMS] = {
     [ICON_MENU_RIGHT_ROTATE]    = "right_rotate.png",
     [ICON_MENU_PIC_RESET]       = "pic_reset.png",
     [ICON_MENU_FOLD]            = "fold.png",
+    [ICON_LOAD_ERR]             = "load_err.png",
 };
  
 /* 图标对应的区域，数组下标表示图标编号，下标对应的数组项表示该图标对应的区域，用于图标缩放 */
@@ -77,6 +79,7 @@ static const int icon_region_links[] = {
     [ICON_MENU_RIGHT_ROTATE] = REGION_MENU_RIGHT_ROTATE,
     [ICON_MENU_PIC_RESET]    = REGION_MENU_PIC_RESET,
     [ICON_MENU_FOLD]         = REGION_MENU_UNFOLD,
+    [ICON_LOAD_ERR]          = REGION_MAIN_PIC,   
 };
 
 /* 图标数据数组 */
@@ -274,7 +277,7 @@ static int reset_pic_cache_size(struct pic_cache *pic_cache,bool save_orig)
     unsigned int orig_width,orig_height;
     struct pixel_data *pixel_data;
 
-    if(!pic_cache->has_orig_data){
+    if(!pic_cache->orig_data.buf){
         return 0;              //没有原始图像数据，直接退出
     }
 
@@ -313,31 +316,30 @@ static int reset_pic_cache_size(struct pic_cache *pic_cache,bool save_orig)
     pic_cache->virtual_y = (display_height - zoomed_height) / 2;
 
     /* 检查当前缓存的数据大小是否符合要求，要是符合在这里就可以退出了，否则从原始数据中复制一份过去 */
-    if(!(!pic_cache->angle && pic_cache->has_data && zoomed_width == pixel_data->width && \
+    if(!(!pic_cache->angle && pixel_data->buf && zoomed_width == pixel_data->width && \
     zoomed_height == pixel_data->height)){
-        if(pic_cache->has_data){
+        if(pixel_data->buf){
             /* 释放原有数据 */
             free(pixel_data->buf);
-            pic_cache->has_data = 0;
         }
         memset(pixel_data,0,sizeof(struct pixel_data));
         pixel_data->width = zoomed_width;
         pixel_data->height = zoomed_height;
         pic_cache->angle = 0;
-        ret = pic_zoom_with_same_bpp(pixel_data,pic_cache->orig_data);
+        ret = pic_zoom_with_same_bpp(pixel_data,&pic_cache->orig_data);
         if(ret < 0){
             DP_ERR("%s:pic_zoom_with_same_bpp failed!\n",__func__);
             return ret;
         }
-        pic_cache->has_data = 1;
+        
     }
+    printf("%s-%d,pixel_data.buf:%p\n",__func__,__LINE__,pixel_data->buf);
     /* 如果需要释放原有数据 */
     if(!save_orig){
-        pixel_data = (struct pixel_data*)pic_cache->orig_data;
-        free(pixel_data->buf);
-        free(pixel_data);
-        pic_cache->has_orig_data = 0;
-        pic_cache->orig_data = NULL;
+        pixel_data = &pic_cache->orig_data;
+        if(pixel_data->buf)
+            free(pixel_data->buf);
+        memset(pixel_data,0,sizeof(struct pixel_data));
     }
     return 0;
 }
@@ -346,10 +348,12 @@ static int reset_pic_cache_size(struct pic_cache *pic_cache,bool save_orig)
 static int get_pic_cache_data(int pic_index,struct pic_cache **pic_cache,bool save_orig)
 {
     int ret;
+    // int err = 0;
+    int is_gif = 0;
     char *pic_file;
     struct pixel_data *pixel_data;
     struct pic_cache *temp_cache;
-
+    
     /* 构造文件名 */
     pic_file = malloc(strlen(cur_dir) + 2 + strlen(cur_dir_pic_contents[pic_index]->name));
     if(!pic_file){
@@ -357,16 +361,6 @@ static int get_pic_cache_data(int pic_index,struct pic_cache **pic_cache,bool sa
         return -ENOMEM;
     }
     sprintf(pic_file,"%s/%s",cur_dir,cur_dir_pic_contents[pic_index]->name);
-    
-    /* 分配一个struct pixel_data */
-    pixel_data = malloc(sizeof(struct pixel_data));
-    if(!pixel_data){
-        DP_ERR("%s:malloc failed!\n",__func__);
-        return -ENOMEM;
-    }
-    memset(pixel_data,0,sizeof(struct pixel_data));
-    ret = get_pic_pixel_data(pic_file,cur_dir_pic_contents[pic_index]->file_type,pixel_data);
-    free(pic_file);
     
     /* 分配一个struct pic_cache */
     temp_cache = malloc(sizeof(struct pic_cache));
@@ -376,21 +370,43 @@ static int get_pic_cache_data(int pic_index,struct pic_cache **pic_cache,bool sa
     }
     memset(temp_cache,0,sizeof(struct pic_cache));
 
-    /* 先将原始数据临时关联到pic_caches上 */
-    temp_cache->orig_data = pixel_data;
-    temp_cache->has_orig_data = 1;
+    pixel_data = &temp_cache->orig_data;
+    
+    ret = get_pic_pixel_data(pic_file,cur_dir_pic_contents[pic_index]->file_type,pixel_data);
+    if(ret){
+        DP_WARNING("%s:get_pic_pixel_data failed!\n",__func__);
+        /* 如果图片获取失败，则显示一张表示错误的图片 */
+        *pixel_data = icon_pixel_datas[ICON_LOAD_ERR];
+        if(NULL == (pixel_data = malloc(pixel_data->total_bytes))){
+            DP_ERR("%s:malloc failed!\n",__func__);
+            return -ENOMEM;
+        }
+        memcpy(pixel_data->buf,icon_pixel_datas[ICON_LOAD_ERR].buf,pixel_data->total_bytes);
+    }
+    free(pic_file);
+    printf("%s-%d,pixel_data.buf:%p\n",__func__,__LINE__,pixel_data->buf);
+    /* 判断是否为gif图片 */
+    if(!ret && cur_dir_pic_contents[pic_index]->file_type == FILETYPE_FILE_GIF){
+        is_gif = 1;
+    }
 
     /* 填充pic_cache;  保存图像的原始长宽 */
     temp_cache->orig_width = pixel_data->width;
     temp_cache->orig_height = pixel_data->height;
     
     /* 将读入的图片重置为能在屏幕上显示的大小,如果图片能完全被显示,那么不做改变,否则会缩放至合适大小 */
+    if(is_gif){
+        temp_cache->is_gif = 1;
+        temp_cache->gif_thread_pool = (struct gif_thread_pool *)temp_cache->orig_data.rows_buf;
+    }
+
     ret = reset_pic_cache_size(temp_cache,save_orig);
     if(ret < 0){
         DP_ERR("%s:reset_pic_size failed!\n",__func__);
         return -1;
     }
-    temp_cache->has_data = 1;
+    printf("%s-%d,temp_cache.data.buf:%p\n",__func__,__LINE__,temp_cache->data.buf);
+    printf("%s-%d,pic_cache:%p\n",__func__,__LINE__,pic_cache);
     *pic_cache = temp_cache;        //返回数据
 
     return 0;
@@ -412,13 +428,11 @@ static int generate_pic_cache(void)
     if(pic_caches_generated){
         for(i = 0 ; i < 3 ; i++){
             if(pic_caches[i]){
-                if(pic_caches[i]->has_data){
+                if(pic_caches[i]->data.buf){
                     free(pic_caches[i]->data.buf);
                 }
-                if(pic_caches[i]->has_orig_data){
-                    struct pixel_data *temp = (struct pixel_data*)pic_caches[i]->orig_data;
-                    free(temp->buf);
-                    free(temp);
+                if(pic_caches[i]->orig_data.buf){
+                    free(pic_caches[i]->orig_data.buf);
                 }
                 free(pic_caches[i]);
             }   
@@ -573,14 +587,15 @@ static int fill_main_pic_area(struct page_struct *page)
     dst_data = main_pic_region->pixel_data;
     src_data = &cur_pic->data;
     src_bpp = src_data->bpp;
-    DP_INFO("enter:%s\n",__func__);DP_INFO("cur_pic->has_data:%d\n",cur_pic->has_data);
-    DP_INFO("dst_data->bpp:%d,src_data->bpp:%d\n",dst_data->bpp,src_data->bpp);
+
     //如果一些条件不满足，快退出把，不要浪费时间了
-    if(!page->region_mapped || !cur_pic->has_data || dst_data->bpp != 16 || \
-    (src_data->bpp != 16 && src_data->bpp != 24 && src_data->bpp != 32)){     
+    if(!page->region_mapped || !src_data->buf || dst_data->bpp != 16 || \
+    (src_data->bpp != 16 && src_data->bpp != 24 && src_data->bpp != 32)){   
+          
+        printf("src_data->buf-%p\n",src_data->buf); 
         return -1;
     }
-    DP_INFO("cur_pic->has_data:%d\n",cur_pic->has_data);
+
     /* 先清理该区域 */
     clear_pixel_data(dst_data,BACKGROUND_COLOR);
 
@@ -604,7 +619,7 @@ static int fill_main_pic_area(struct page_struct *page)
             disp_width = region_width;
             x_pic = (-x_vpic);
         }
-    }else if(x_vpic < region_width){DP_INFO("%d\n",__LINE__);
+    }else if(x_vpic < region_width){
         if((x_vpic + pic_width - 1) < region_width){
             x_pic = 0;
             disp_width = pic_width;
@@ -618,8 +633,8 @@ static int fill_main_pic_area(struct page_struct *page)
         return 0;           //图像已经超出显示区域了
     }
     /* 再解决y方向 */
-    if(y_vpic < 0){DP_INFO("%d\n",__LINE__);
-        if((y_vpic + pic_height - 1) < 0){DP_INFO("%d\n",__LINE__);
+    if(y_vpic < 0){
+        if((y_vpic + pic_height - 1) < 0){
             return 0;           //图像已经超出显示区域了
         }else if((y_vpic + pic_height) < region_height){
             y_disp = 0;
@@ -630,7 +645,7 @@ static int fill_main_pic_area(struct page_struct *page)
             disp_height = region_height;
             y_pic = (-y_vpic);
         }
-    }else if(y_vpic < region_height){DP_INFO("%d\n",__LINE__);
+    }else if(y_vpic < region_height){
         if((y_vpic + pic_height - 1) < region_height){
             y_pic = 0;
             disp_height = pic_height;
@@ -643,7 +658,7 @@ static int fill_main_pic_area(struct page_struct *page)
     }else{
         return 0;           //图像已经超出显示区域了
     }
-    DP_INFO("x_pic:%d,y_pic:%d,disp_width:%d,disp_height:%d\n",x_pic,y_pic,disp_width,disp_height);
+
     /* 位置总算确定好了，开始描绘像素，希望能成功，阿弥陀佛 */
     /* 目标区域默认为16bpp，源数据区域可为16、24、32bpp，否则报错 */
     for(i = 0 ; i < disp_height ; i++){
@@ -745,17 +760,19 @@ static int view_pic_page_fill_layout(struct page_struct *page)
         page->icon_prepared = 1;
     }
     /* 填充菜单图标数据 */
-    ret = fill_menu_icon_area(page);DP_INFO("%d\n",__LINE__);
+    ret = fill_menu_icon_area(page);
     if(ret){
         DP_ERR("%s:fill_menu_icon_area failed!\n",__func__);
         return -1;
     }
     /* 填充主体图像显示区域 */
-    ret = fill_main_pic_area(page);DP_INFO("%d\n",__LINE__);
+    pthread_mutex_lock(&view_pic_priv.gif_mutex);
+    ret = fill_main_pic_area(page);
     if(ret){
         DP_ERR("%s:fill_main_pic_area failed!\n",__func__);
         return -1;
     }
+    pthread_mutex_unlock(&view_pic_priv.gif_mutex);
     return 0;
 }
 
@@ -768,97 +785,16 @@ void goback_menu_cb_func(void)
     if(!strcmp(cur_dir,"/")){
         return;
     }
-
-    /*  */
 }
 
-/* 点击"上一张"菜单时的回调函数 */
-static int prepic_menu_cb_func(void)
-{   
-    struct pic_cache *temp;
-    int ret;
-    int pre_index;
-    char *pic_file;DP_INFO("enter:%s\n",__func__);
-    /* 如果当前目录只有一张图，则什么也不做 */
-    if(1 == cur_dir_pic_nums){
-        return 0;
-    }else if(2 == cur_dir_pic_nums){
-        if(0 == cur_pic_index){
-            cur_pic_index = 1;
-            temp = pic_caches[1];
-            pic_caches[1] = pic_caches[2];
-            pic_caches[0] = temp;
-        }else if(1 == cur_pic_index){
-            cur_pic_index = 0;
-            temp = pic_caches[1];
-            pic_caches[1] = pic_caches[0];
-            pic_caches[2] = temp;
-        }
-        ret = reset_pic_cache_size(temp,0);
-        /* 释放缓存中的原始数据 */
-        if(ret < 0){
-            DP_ERR("%s:reset_pic_size failed!\n",__func__);
-            return -1;
-        }
-        fill_main_pic_area(&view_pic_page);
-    }else if(3 == cur_dir_pic_nums){
-        if((cur_pic_index -= 1) < 0){
-            cur_pic_index = 2;
-        }
-        temp = pic_caches[1];
-        pic_caches[1] = pic_caches[0];
-        pic_caches[0] = pic_caches[2];
-        pic_caches[2] = temp;
-        ret = reset_pic_cache_size(temp,0);
-        if(ret < 0){
-            DP_ERR("%s:reset_pic_size failed!\n",__func__);
-            return -1;
-        }
-        fill_main_pic_area(&view_pic_page);
-    }else{
-        if((cur_pic_index -= 1) < 0){
-            cur_pic_index = cur_dir_pic_nums - 1;
-        }
-        if((pre_index = cur_pic_index - 1) < 0){
-            pre_index = cur_dir_pic_nums - 1;
-        }
-        temp = pic_caches[1];
-        ret = reset_pic_cache_size(temp,0);
-        if(ret < 0){
-            DP_ERR("%s:reset_pic_size failed!\n",__func__);
-            return -1;
-        }
-        /* 先显示图片，释放和缓存操作放在后面 */
-        pic_caches[1] = pic_caches[0];
-        fill_main_pic_area(&view_pic_page);
-        flush_main_pic_area(&view_pic_page);
-        
-        /* 释放下一张的缓存 */
-        if(pic_caches[2] && pic_caches[2]->has_data){
-            free(pic_caches[2]->data.buf);
-            free(pic_caches[2]);
-            pic_caches[2] = NULL;
-        }
-        
-        pic_caches[2] = temp;
-        
-        /* 读入上一张的缓存 */
-        ret = get_pic_cache_data(pre_index,&pic_caches[0],0);
-        if(ret < 0){
-            DP_ERR("%s:get_pic_cache_data failed!\n",__func__);
-            return -ENOMEM;
-        }
-    }
-    return 0;
-}
-
-/* 点击"下一张"菜单时的回调函数 */
-static int nextpic_menu_cb_func(void)
+/* @description : 用于“上一张”、“下一张”功能的函数
+ * @param - next_pic : 1 表示下一张，0 表示上一张  */
+static int __pre_next_pic(int next_pic)
 {
     struct pic_cache *temp;
     int i,ret;
-    int is_gif;
-    int next_index;
+    int is_gif = 0;
+    int next_index,pre_index;
     char *gif_file;
     struct gif_thread_pool *thread_pool;
 
@@ -866,60 +802,80 @@ static int nextpic_menu_cb_func(void)
     if(1 == cur_dir_pic_nums){
         return 0;
     }else if(3 >= cur_dir_pic_nums){
-        if((cur_pic_index += 1) == cur_dir_pic_nums){
-            cur_pic_index = 0;
+        if(next_pic){
+            if((cur_pic_index += 1) == cur_dir_pic_nums){
+                cur_pic_index = 0;
+            }
+        }else{
+            if((cur_pic_index -= 1) < 0){
+                cur_pic_index = cur_dir_pic_nums - 1;
+            }
         }
+        
         /* 先判断下一张图是否为gif */
         if(cur_dir_pic_contents[cur_pic_index]->file_type == FILETYPE_FILE_GIF){
             is_gif = 1;
         }
 
         if(is_gif){
-            if(!(gif_file = malloc(strlen(cur_dir) + 2 +strlen(cur_dir_pic_contents[cur_pic_index]->name)))){
+            pthread_mutex_lock(&view_pic_priv.gif_mutex);
+            if(!(gif_file = malloc(strlen(cur_dir) + 2 + strlen(cur_dir_pic_contents[cur_pic_index]->name)))){
                 DP_ERR("%s:malloc failed!\n",__func__);
                 return -ENOMEM;
             }
             sprintf(gif_file,"%s/%s",cur_dir,cur_dir_pic_contents[cur_pic_index]->name);
             cur_gif_file = gif_file; 
+retry:      
+            temp = pic_caches[1];
+            pic_caches[1] = pic_caches[2];
+            pic_caches[2] = pic_caches[0];
+            pic_caches[1] = temp;
+                
+            if(!pic_caches[1])
+                goto retry;
+
+            fill_main_pic_area(&view_pic_page);
+            flush_main_pic_area(&view_pic_page);
+            pthread_mutex_unlock(&view_pic_priv.gif_mutex);
         }else{
             if(cur_gif_file){
                 cur_gif_file = NULL;
             }
+retry1:     
+            temp = pic_caches[1];
+            pic_caches[1] = pic_caches[2];
+            pic_caches[2] = pic_caches[0];
+            pic_caches[1] = temp;
+                
+            if(!pic_caches[1])
+                goto retry1;
+            fill_main_pic_area(&view_pic_page);
+            flush_main_pic_area(&view_pic_page);
         }
-retry:
-        temp = pic_caches[1];
-        pic_caches[1] = pic_caches[2];
-        pic_caches[2] = pic_caches[0];
-        pic_caches[1] = temp;
-            
-        if(!pic_caches[1])
-            goto retry;
-
-        pthread_mutex_lock(&view_pic_priv.page_mem_mutex);
-        fill_main_pic_area(&view_pic_page);
-        flush_main_pic_area(&view_pic_page);
-        pthread_mutex_unlock(&view_pic_priv.page_mem_mutex);
-
+        
         if(is_gif){
-            /* 以某种方法启动新线程显示动图 */
-            /* 很卑鄙的方法，因为缓存数据只用一种存储方式，这里复用了行缓存指针 */
-            thread_pool = (struct gif_thread_pool *)pic_caches[1]->data.rows_buf;
+            /* 以某种方法启动新线程显示动图，此处原始数据指向线程池数据结构 */
+            thread_pool = (struct gif_thread_pool *)pic_caches[1]->gif_thread_pool;
 retry2:
+            pthread_mutex_lock(&thread_pool->pool_mutex);
             if(thread_pool->idle_thread){
                 for(i = 0 ; i < THREAD_NUMS ; i++){
                     if(!thread_pool->thread_datas[i].submitted){
                         thread_pool->thread_datas[i].file_name = cur_gif_file;
-                        pthread_mutex_lock(&thread_pool->pool_mutex);
-                        pthread_cond_signal(&thread_pool->thread_cond);
-                        pthread_mutex_unlock(&thread_pool->pool_mutex);
                         thread_pool->thread_datas[i].submitted = 1;
+                        pthread_cond_signal(&thread_pool->thread_cond);
                         break;
                     }
                 }
-            }else{
-                pthread_mutex_lock(&thread_pool->pool_mutex);
-                pthread_cond_wait(&thread_pool->task_cond,&thread_pool->pool_mutex);
                 pthread_mutex_unlock(&thread_pool->pool_mutex);
+            }else{
+                pthread_mutex_unlock(&thread_pool->pool_mutex);
+
+                pthread_mutex_lock(&thread_pool->task_mutex);
+                thread_pool->task_wait = 1;
+                pthread_cond_wait(&thread_pool->task_cond,&thread_pool->task_mutex);
+                thread_pool->task_wait = 0;
+                pthread_mutex_unlock(&thread_pool->task_mutex);
                 goto retry2;
             }
         }
@@ -930,85 +886,353 @@ retry2:
             return -1;
         }
     }else{
-        if((cur_pic_index += 1) == cur_dir_pic_nums){
-            cur_pic_index = 0;
+        if(next_pic){
+            if((cur_pic_index += 1) == cur_dir_pic_nums){
+                cur_pic_index = 0;
+            }
+            if((next_index = cur_pic_index + 1) == cur_dir_pic_nums){
+                next_index = 0;
+            }
+        }else{
+            if((cur_pic_index -= 1) < 0){
+                cur_pic_index = cur_dir_pic_nums - 1;
+            }
+            if((pre_index = cur_pic_index - 1) < 0){
+                pre_index = cur_dir_pic_nums - 1;
+            }
         }
-        if((next_index = cur_pic_index + 1) == cur_dir_pic_nums){
-            next_index = 0;
-        }
+ 
         /* 先判断下一张图是否为gif */
         if(cur_dir_pic_contents[cur_pic_index]->file_type == FILETYPE_FILE_GIF){
             is_gif = 1;
         }
-
+        
         /* 如果下一张是gif图，更新图片名字 */
         if(is_gif){
+            pthread_mutex_lock(&view_pic_priv.gif_mutex);
             if(!(gif_file = malloc(strlen(cur_dir) + 2 +strlen(cur_dir_pic_contents[cur_pic_index]->name)))){
                 DP_ERR("%s:malloc failed!\n",__func__);
                 return -ENOMEM;
             }
             sprintf(gif_file,"%s/%s",cur_dir,cur_dir_pic_contents[cur_pic_index]->name);
             cur_gif_file = gif_file; 
+            if(next_pic){
+                temp = pic_caches[0];
+                pic_caches[0] = pic_caches[1];
+                pic_caches[1] = pic_caches[2];
+                pic_caches[2] = NULL;
+            }else{
+                temp = pic_caches[2];
+                pic_caches[2] = pic_caches[1];
+                pic_caches[1] = pic_caches[0];
+                pic_caches[0] = NULL;
+            }
+            
+            /* 先显示图片，释放和缓存操作放在后面 */
+            fill_main_pic_area(&view_pic_page);
+            flush_main_pic_area(&view_pic_page);
+            pthread_mutex_unlock(&view_pic_priv.gif_mutex);
         }else{
             if(cur_gif_file){
+                pthread_mutex_lock(&view_pic_priv.gif_mutex);
                 cur_gif_file = NULL;
-            }
+                if(next_pic){
+                    temp = pic_caches[0];
+                    pic_caches[0] = pic_caches[1];
+                    pic_caches[1] = pic_caches[2];
+                    pic_caches[2] = NULL;
+                }else{
+                    temp = pic_caches[2];
+                    pic_caches[2] = pic_caches[1];
+                    pic_caches[1] = pic_caches[0];
+                    pic_caches[0] = NULL;
+                }
+                /* 先显示图片，释放和缓存操作放在后面 */
+                fill_main_pic_area(&view_pic_page);
+                flush_main_pic_area(&view_pic_page);
+                pthread_mutex_unlock(&view_pic_priv.gif_mutex);
+            }else{
+                if(next_pic){
+                    temp = pic_caches[0];
+                    pic_caches[0] = pic_caches[1];
+                    pic_caches[1] = pic_caches[2];
+                    pic_caches[2] = NULL;
+                }else{
+                    temp = pic_caches[2];
+                    pic_caches[2] = pic_caches[1];
+                    pic_caches[1] = pic_caches[0];
+                    pic_caches[0] = NULL;
+                }
+                /* 先显示图片，释放和缓存操作放在后面 */
+                fill_main_pic_area(&view_pic_page);
+                flush_main_pic_area(&view_pic_page);
+            }   
         }
-
-        temp = pic_caches[0];
-        pic_caches[0] = pic_caches[1];
-        pic_caches[1] = pic_caches[2];
-        pic_caches[2] = NULL;
-
-        /* 先显示图片，释放和缓存操作放在后面 */
-        pthread_mutex_lock(&view_pic_priv.page_mem_mutex);
-        fill_main_pic_area(&view_pic_page);
-        flush_main_pic_area(&view_pic_page);
-        pthread_mutex_unlock(&view_pic_priv.page_mem_mutex);
-
+        
         if(is_gif){
-            thread_pool = (struct gif_thread_pool *)pic_caches[1]->data.rows_buf;
-retry3:
+            thread_pool = (struct gif_thread_pool *)pic_caches[1]->gif_thread_pool;
+retry3:     
+            pthread_mutex_lock(&thread_pool->pool_mutex);
             if(thread_pool->idle_thread){
+                printf("thread_pool->pool_mutex-%p\n",&thread_pool->pool_mutex);
                 for(i = 0 ; i < THREAD_NUMS ; i++){
                     if(!thread_pool->thread_datas[i].submitted){
                         thread_pool->thread_datas[i].file_name = cur_gif_file;
-                        pthread_mutex_lock(&thread_pool->pool_mutex);
-                        pthread_cond_signal(&thread_pool->thread_cond);
-                        pthread_mutex_unlock(&thread_pool->pool_mutex);
                         thread_pool->thread_datas[i].submitted = 1;
                         break;
                     }
                 }
-            }else{
-                pthread_mutex_lock(&thread_pool->pool_mutex);
-                pthread_cond_wait(&thread_pool->task_cond,&thread_pool->pool_mutex);
+                pthread_cond_signal(&thread_pool->thread_cond);
                 pthread_mutex_unlock(&thread_pool->pool_mutex);
+            }else{
+                pthread_mutex_unlock(&thread_pool->pool_mutex);
+
+                pthread_mutex_lock(&thread_pool->task_mutex);
+                thread_pool->task_wait = 1;
+                pthread_cond_wait(&thread_pool->task_cond,&thread_pool->task_mutex);
+                thread_pool->task_wait = 0;
+                pthread_mutex_unlock(&thread_pool->task_mutex);
+
                 goto retry3;
             }
         }
-
-        ret = reset_pic_cache_size(pic_caches[0],0);
+        if(next_pic){
+            ret = reset_pic_cache_size(pic_caches[0],0);
+        }else{
+            ret = reset_pic_cache_size(pic_caches[2],0);
+        }
         if(ret < 0){
             DP_ERR("%s:reset_pic_size failed!\n",__func__);
             return -1;
         }
-            
+        
         /* 释放上一张的缓存 */
-        if(temp && temp->has_data){
+        if(temp && temp->data.buf){
             free(temp->data.buf);
             free(temp);
         }
         
         /* 读入下一张的缓存 */
-        ret = get_pic_cache_data(next_index,&pic_caches[2],0);
+        if(next_pic){
+            ret = get_pic_cache_data(next_index,&pic_caches[2],0);
+        }else{
+            ret = get_pic_cache_data(pre_index,&pic_caches[0],0);
+        }
         if(ret < 0){
             DP_ERR("%s:get_pic_cache_data failed!\n",__func__);
             return -ENOMEM;
         }
+        
     }
     return 0;
 }
+
+/* 点击"上一张"菜单时的回调函数 */
+static int prepic_menu_cb_func(void)
+{   
+    return __pre_next_pic(0);
+}
+
+/* 点击"下一张"菜单时的回调函数 */
+static int nextpic_menu_cb_func(void)
+{
+    return __pre_next_pic(1);
+}
+
+// static int nextpic_menu_cb_func(void)
+// {
+//     struct pic_cache *temp;
+//     int i,ret;
+//     int is_gif = 0;
+//     int next_index;
+//     char *gif_file;
+//     struct gif_thread_pool *thread_pool;
+//     DP_ERR("enter:%s\n",__func__);
+//     /* 如果当前目录只有一张图，则什么也不做 */
+//     if(1 == cur_dir_pic_nums){
+//         return 0;
+//     }else if(3 >= cur_dir_pic_nums){
+//         if((cur_pic_index += 1) == cur_dir_pic_nums){
+//             cur_pic_index = 0;
+//         }
+//         /* 先判断下一张图是否为gif */
+//         if(cur_dir_pic_contents[cur_pic_index]->file_type == FILETYPE_FILE_GIF){
+//             is_gif = 1;
+//         }
+        
+//         if(is_gif){
+//             pthread_mutex_lock(&view_pic_priv.gif_mutex);
+//             if(!(gif_file = malloc(strlen(cur_dir) + 2 + strlen(cur_dir_pic_contents[cur_pic_index]->name)))){
+//                 DP_ERR("%s:malloc failed!\n",__func__);
+//                 return -ENOMEM;
+//             }
+//             sprintf(gif_file,"%s/%s",cur_dir,cur_dir_pic_contents[cur_pic_index]->name);
+//             cur_gif_file = gif_file; 
+// retry:      
+//             temp = pic_caches[1];
+//             pic_caches[1] = pic_caches[2];
+//             pic_caches[2] = pic_caches[0];
+//             pic_caches[1] = temp;
+                
+//             if(!pic_caches[1])
+//                 goto retry;
+
+//             fill_main_pic_area(&view_pic_page);
+//             flush_main_pic_area(&view_pic_page);
+//             pthread_mutex_unlock(&view_pic_priv.gif_mutex);
+//         }else{
+//             if(cur_gif_file){
+//                 cur_gif_file = NULL;
+//             }
+// retry1:     
+//             temp = pic_caches[1];
+//             pic_caches[1] = pic_caches[2];
+//             pic_caches[2] = pic_caches[0];
+//             pic_caches[1] = temp;
+                
+//             if(!pic_caches[1])
+//                 goto retry1;
+//             fill_main_pic_area(&view_pic_page);
+//             flush_main_pic_area(&view_pic_page);
+//         }
+        
+//         if(is_gif){
+//             /* 以某种方法启动新线程显示动图，此处原始数据指向线程池数据结构 */
+//             thread_pool = (struct gif_thread_pool *)pic_caches[1]->gif_thread_pool;
+// retry2:
+//             pthread_mutex_lock(&thread_pool->pool_mutex);
+//             if(thread_pool->idle_thread){
+//                 for(i = 0 ; i < THREAD_NUMS ; i++){
+//                     if(!thread_pool->thread_datas[i].submitted){
+//                         thread_pool->thread_datas[i].file_name = cur_gif_file;
+//                         thread_pool->thread_datas[i].submitted = 1;
+//                         pthread_cond_signal(&thread_pool->thread_cond);
+//                         break;
+//                     }
+//                 }
+//                 pthread_mutex_unlock(&thread_pool->pool_mutex);
+//             }else{
+//                 pthread_mutex_unlock(&thread_pool->pool_mutex);
+
+//                 pthread_mutex_lock(&thread_pool->task_mutex);
+//                 thread_pool->task_wait = 1;
+//                 pthread_cond_wait(&thread_pool->task_cond,&thread_pool->task_mutex);
+//                 thread_pool->task_wait = 0;
+//                 pthread_mutex_unlock(&thread_pool->task_mutex);
+//                 goto retry2;
+//             }
+//         }
+        
+//         ret = reset_pic_cache_size(temp,0);
+//         if(ret < 0){
+//             DP_ERR("%s:reset_pic_size failed!\n",__func__);
+//             return -1;
+//         }
+//     }else{
+//         if((cur_pic_index += 1) == cur_dir_pic_nums){
+//             cur_pic_index = 0;
+//         }
+//         if((next_index = cur_pic_index + 1) == cur_dir_pic_nums){
+//             next_index = 0;
+//         }
+//         /* 先判断下一张图是否为gif */
+//         if(cur_dir_pic_contents[cur_pic_index]->file_type == FILETYPE_FILE_GIF){
+//             is_gif = 1;
+//         }
+//         printf("%s-%d-cur_dir_pic_contents[cur_pic_index]->file_type:%d\n",__func__,__LINE__,cur_dir_pic_contents[cur_pic_index]->file_type);
+        
+//         /* 如果下一张是gif图，更新图片名字 */
+//         if(is_gif){
+//             pthread_mutex_lock(&view_pic_priv.gif_mutex);
+//             if(!(gif_file = malloc(strlen(cur_dir) + 2 +strlen(cur_dir_pic_contents[cur_pic_index]->name)))){
+//                 DP_ERR("%s:malloc failed!\n",__func__);
+//                 return -ENOMEM;
+//             }
+//             sprintf(gif_file,"%s/%s",cur_dir,cur_dir_pic_contents[cur_pic_index]->name);
+//             cur_gif_file = gif_file; 
+            
+//             temp = pic_caches[0];
+//             pic_caches[0] = pic_caches[1];
+//             pic_caches[1] = pic_caches[2];
+//             pic_caches[2] = NULL;
+//             /* 先显示图片，释放和缓存操作放在后面 */
+//             fill_main_pic_area(&view_pic_page);
+//             flush_main_pic_area(&view_pic_page);
+//             pthread_mutex_unlock(&view_pic_priv.gif_mutex);
+//         }else{
+//             if(cur_gif_file){
+//                 pthread_mutex_lock(&view_pic_priv.gif_mutex);
+//                 cur_gif_file = NULL;
+//                 temp = pic_caches[0];
+//                 pic_caches[0] = pic_caches[1];
+//                 pic_caches[1] = pic_caches[2];
+//                 pic_caches[2] = NULL;
+//                 /* 先显示图片，释放和缓存操作放在后面 */
+//                 fill_main_pic_area(&view_pic_page);
+//                 flush_main_pic_area(&view_pic_page);
+//                 pthread_mutex_unlock(&view_pic_priv.gif_mutex);
+//             }else{
+//                 temp = pic_caches[0];
+//                 pic_caches[0] = pic_caches[1];
+//                 pic_caches[1] = pic_caches[2];
+//                 pic_caches[2] = NULL;
+//                 /* 先显示图片，释放和缓存操作放在后面 */
+//                 fill_main_pic_area(&view_pic_page);
+//                 flush_main_pic_area(&view_pic_page);
+//             }   
+//         }
+        
+        
+//         if(is_gif){
+//             thread_pool = (struct gif_thread_pool *)pic_caches[1]->gif_thread_pool;
+// retry3:     
+//             pthread_mutex_lock(&thread_pool->pool_mutex);
+//             if(thread_pool->idle_thread){
+//                 printf("thread_pool->pool_mutex-%p\n",&thread_pool->pool_mutex);
+//                 for(i = 0 ; i < THREAD_NUMS ; i++){
+//                     if(!thread_pool->thread_datas[i].submitted){
+//                         thread_pool->thread_datas[i].file_name = cur_gif_file;
+//                         thread_pool->thread_datas[i].submitted = 1;
+//                         break;
+//                     }
+//                 }
+//                 pthread_cond_signal(&thread_pool->thread_cond);
+//                 pthread_mutex_unlock(&thread_pool->pool_mutex);
+//             }else{
+//                 pthread_mutex_unlock(&thread_pool->pool_mutex);
+
+//                 pthread_mutex_lock(&thread_pool->task_mutex);
+//                 thread_pool->task_wait = 1;
+//                 pthread_cond_wait(&thread_pool->task_cond,&thread_pool->task_mutex);
+//                 thread_pool->task_wait = 0;
+//                 pthread_mutex_unlock(&thread_pool->task_mutex);
+
+//                 goto retry3;
+//             }
+//         }
+        
+//         ret = reset_pic_cache_size(pic_caches[0],0);
+//         if(ret < 0){
+//             DP_ERR("%s:reset_pic_size failed!\n",__func__);
+//             return -1;
+//         }
+        
+//         /* 释放上一张的缓存 */
+//         if(temp && temp->data.buf){
+//             free(temp->data.buf);
+//             free(temp);
+//         }
+        
+//         /* 读入下一张的缓存 */
+//         ret = get_pic_cache_data(next_index,&pic_caches[2],0);
+//         if(ret < 0){
+//             DP_ERR("%s:get_pic_cache_data failed!\n",__func__);
+//             return -ENOMEM;
+//         }
+        
+//     }
+//     return 0;
+// }
 
 /* 点击"更多"菜单时的回调函数 */
 static int unfold_menu_cb_func(void)
@@ -1065,26 +1289,20 @@ static int zoomin_menu_cb_func(void)
     }
 
     /* 先看看当前图片的原图数据是否存在，如果不存在则进行读取 */
-    if(!cur_pic->has_orig_data){
+    if(!cur_pic->orig_data.buf){
         cur_file = malloc(strlen(cur_dir) + 2 + strlen(cur_dir_pic_contents[cur_pic_index]->name));
         if(!cur_file){
             DP_ERR("%s:malloc failed!\n",__func__);
             return -ENOMEM;
         }
         sprintf(cur_file,"%s/%s",cur_dir,cur_dir_pic_contents[cur_pic_index]->name);
-        cur_pic->orig_data = malloc(sizeof(struct pixel_data));
-        if(!cur_pic->orig_data){
-            DP_ERR("%s:malloc failed!\n",__func__);
-            return -ENOMEM;
-        }
-        memset(cur_pic->orig_data,0,sizeof(struct pixel_data));
-        ret = get_pic_pixel_data(cur_file,cur_dir_pic_contents[cur_pic_index]->file_type,cur_pic->orig_data);
+        
+        memset(&cur_pic->orig_data,0,sizeof(struct pixel_data));
+        ret = get_pic_pixel_data(cur_file,cur_dir_pic_contents[cur_pic_index]->file_type,&cur_pic->orig_data);
         if(ret < 0){
             DP_ERR("%s:get_pic_pixel_data failed!\n",__func__);
-            free(cur_pic->orig_data);
             return ret;
         }
-        cur_pic->has_orig_data = 1;
         free(cur_file);
     }
     
@@ -1100,23 +1318,20 @@ static int zoomin_menu_cb_func(void)
     cur_pic->virtual_y -= ((zoomed_height - pixel_data->height) / 2);
     
     /* 释放原有数据 */
-    if(cur_pic->has_data){
+    if(pixel_data->buf){
         free(pixel_data->buf);
-        cur_pic->has_data = 0;
     }
     memset(pixel_data,0,sizeof(struct pixel_data));
     pixel_data->width = zoomed_width;
     pixel_data->height = zoomed_height;
     
     /* 开始缩放 */
-    ret = pic_zoom_with_same_bpp_and_rotate(cur_pic->orig_data,pixel_data,cur_pic->angle);
+    ret = pic_zoom_with_same_bpp_and_rotate(&cur_pic->orig_data,pixel_data,cur_pic->angle);
     if(ret < 0){
         DP_ERR("%s:pic_zoom_with_same_bpp_and_rotate failed!\n",__func__);
         free(pixel_data);
         return ret;
     }
-
-    cur_pic->has_data = 1;
 
     /* 将更改刷入缓存 */
     fill_main_pic_area(&view_pic_page);
@@ -1150,33 +1365,26 @@ static int zoomout_menu_cb_func(void)
     
     /* 只要触发了缩放操作，不管缩小还是放大，如果不存在原始数据，都重新读入原始数据进行操作 */
     /* 先看看当前图片的原图数据是否存在，如果不存在则进行读取 */
-    if(!cur_pic->has_orig_data){
+    if(!cur_pic->orig_data.buf){
         cur_file = malloc(strlen(cur_dir) + 2 + strlen(cur_dir_pic_contents[cur_pic_index]->name));
         if(!cur_file){
             DP_ERR("%s:malloc failed!\n",__func__);
             return -ENOMEM;
         }
         sprintf(cur_file,"%s/%s",cur_dir,cur_dir_pic_contents[cur_pic_index]->name);
-        cur_pic->orig_data = malloc(sizeof(struct pixel_data));
-        if(!cur_pic->orig_data){
-            DP_ERR("%s:malloc failed!\n",__func__);
-            return -ENOMEM;
-        }
-        memset(cur_pic->orig_data,0,sizeof(struct pixel_data));
-        ret = get_pic_pixel_data(cur_file,cur_dir_pic_contents[cur_pic_index]->file_type,cur_pic->orig_data);
+        
+        memset(&cur_pic->orig_data,0,sizeof(struct pixel_data));
+        ret = get_pic_pixel_data(cur_file,cur_dir_pic_contents[cur_pic_index]->file_type,&cur_pic->orig_data);
         if(ret < 0){
             DP_ERR("%s:get_pic_pixel_data failed!\n",__func__);
-            free(cur_pic->orig_data);
             return ret;
         }
-        cur_pic->has_orig_data = 1;
         free(cur_file);
     }
     
     /* 释放原有数据 */
-    if(cur_pic->has_data){
+    if(pixel_data->buf){
         free(pixel_data->buf);
-        cur_pic->has_data = 0;
     }
     memset(pixel_data,0,sizeof(struct pixel_data));
     pixel_data->width = zoomed_width;
@@ -1184,12 +1392,11 @@ static int zoomout_menu_cb_func(void)
 
     /* 开始缩放 */
     // ret = pic_zoom_with_same_bpp(cur_pic->orig_data,pixel_data);
-    ret = pic_zoom_with_same_bpp_and_rotate(cur_pic->orig_data,pixel_data,cur_pic->angle);
+    ret = pic_zoom_with_same_bpp_and_rotate(&cur_pic->orig_data,pixel_data,cur_pic->angle);
     if(ret < 0){
         DP_ERR("%s:pic_zoom_with_same_bpp_and_rotate failed!\n",__func__);
         return -ENOMEM;
     }
-    cur_pic->has_data = 1;
     
     /* 将更改刷入缓存 */
     fill_main_pic_area(&view_pic_page);
@@ -1213,7 +1420,7 @@ static int leftrotate_menu_cb_func(void)
     unsigned short src_line_bytes;
 
     /* 不管怎样，还是检查一下吧，内存问题真的怕 */
-    if(!cur_pic->has_data || !pixel_data->buf){
+    if(!cur_pic->data.buf){
         return -1;
     }
     /* 这里就简单点考虑了，如果数据不是整块存储直接退出 */
@@ -1303,7 +1510,7 @@ static int rightrotate_menu_cb_func(void)
     unsigned short src_line_bytes;
 
     /* 不管怎样，还是检查一下吧，内存问题真的怕 */
-    if(!cur_pic->has_data || !pixel_data->buf){
+    if(!cur_pic->data.buf){
         return -1;
     }
     /* 这里就简单点考虑了，如果数据不是整块存储直接退出 */
@@ -1408,7 +1615,7 @@ static int view_pic_page_run(struct page_param *pre_page_param)
     short y_pre_drag = 0;
     short x_offset,y_offset;
     unsigned short distance;
-    struct display_struct *default_display;
+    struct display_struct *default_display = get_default_display();
     struct page_region *regions;
     unsigned int pre_page_id = pre_page_param->id;
     DP_ERR("enter:%s\n",__func__);
@@ -1420,12 +1627,15 @@ static int view_pic_page_run(struct page_param *pre_page_param)
         view_pic_page.page_mem.height      = default_display->yres;
         view_pic_page.page_mem.line_bytes  = view_pic_page.page_mem.width * view_pic_page.page_mem.bpp / 8;
         view_pic_page.page_mem.total_bytes = view_pic_page.page_mem.line_bytes * view_pic_page.page_mem.height; 
-        view_pic_page.page_mem.buf         = default_display->buf;
+        view_pic_page.page_mem.buf         = malloc(view_pic_page.page_mem.total_bytes);
+        if(!view_pic_page.page_mem.buf){
+            DP_ERR("%s:malloc failed!\n",__func__);
+            return -ENOMEM;
+        }
         view_pic_page.allocated            = 1;
-        view_pic_page.share_fbmem          = 1;
     }
     /* 注意，页面布局在注册该页面时，在初始化函数中已经计算好了 */
-
+    
     /* 将划分的显示区域映射到相应的页面对应的内存中 */
     if(!view_pic_page.region_mapped){
         ret = remap_regions_to_page_mem(&view_pic_page);
@@ -1444,7 +1654,7 @@ static int view_pic_page_run(struct page_param *pre_page_param)
         DP_ERR("%s:get_pic_dir_contents failed!\n",__func__);
         return -1;
     }
-
+    
     /* 如果当前点击的是gif图片，将文件名保存起来 */
     if(cur_dir_pic_contents[cur_pic_index]->file_type == FILETYPE_FILE_GIF){
         if(!(cur_gif_file = malloc(strlen(cur_dir) + 2 + strlen(cur_dir_pic_contents[cur_pic_index]->name)))){
@@ -1453,16 +1663,16 @@ static int view_pic_page_run(struct page_param *pre_page_param)
         }
         sprintf(cur_gif_file,"%s/%s",cur_dir,cur_dir_pic_contents[cur_pic_index]->name);
     }
-
+    
     /* 准备主体的图像数据缓存，该函数使用全局变量 */
-    ret = generate_pic_cache(); DP_INFO("%d\n",__LINE__);
+    ret = generate_pic_cache(); 
     if(ret < 0){
         DP_ERR("%s:generate_pic_cache failed!\n",__func__);
         return -1;
     }
     
     /* 填充各区域 */
-    ret = view_pic_page_fill_layout(&view_pic_page);DP_INFO("%d\n",__LINE__);
+    ret = view_pic_page_fill_layout(&view_pic_page);
     if(ret){
         DP_ERR("%s:view_pic_page_fill_layout failed!\n",__func__);
         return -1;
@@ -1590,7 +1800,7 @@ static int view_pic_page_run(struct page_param *pre_page_param)
 
 static struct view_pic_private view_pic_priv = {
     .cur_gif_file = &cur_gif_file,
-    .page_mem_mutex = PTHREAD_MUTEX_INITIALIZER,
+    .gif_mutex = PTHREAD_MUTEX_INITIALIZER,
     .pic_cache = &pic_caches[1],
     .gif_cache_mutex = PTHREAD_MUTEX_INITIALIZER,
     .fill_main_pic_area = fill_main_pic_area,

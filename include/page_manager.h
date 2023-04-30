@@ -2,6 +2,7 @@
 #define __PAGE_MANAGER_H
 
 #include "display_manager.h"
+#include "picfmt_manager.h"
 #include "input_manager.h"
 
 #define PAGE_REGION(_index,_level,_page) {    \
@@ -79,23 +80,22 @@ struct page_struct
 /* 用于 view pic 页面，表示一个图片缓存 */
 struct pic_cache
 {
-    short virtual_x;        //图片在虚拟显示空间中的右上角座标，这个空间是可以超出显示屏的
-    short virtual_y;
-    short orig_width;       //图片原始宽度
-    short orig_height;      //图片原始高度
-    short angle;            //缓存中图片的角度，可能的取值:0,90,180,270
-    struct pixel_data data;
-    void *orig_data;
-    unsigned int has_data:1;        //标志位，说明缓存中是否有数据
-    unsigned int has_orig_data:1;   //标志位，表明缓存中是否含有原始数据
-    unsigned int is_gif:1;          //是否是一张gif图？
+    short virtual_x;                        //图片在虚拟显示空间中的右上角座标，这个空间是可以超出显示屏的
+    short virtual_y;                
+    short orig_width;                       //图片原始宽度
+    short orig_height;                      //图片原始高度
+    short angle;                            //缓存中图片的角度，可能的取值:0,90,180,270
+    struct pixel_data data;                 //当前的数据
+    struct pixel_data orig_data;            //原始的数据
+    struct gif_thread_pool *gif_thread_pool;//gif线程池结构体
+    unsigned int is_gif:1;                  //是否是一张gif图？
 };
 
 /* view pic 页面用到的私有结构 */
 struct view_pic_private
 {
     char **cur_gif_file;
-    pthread_mutex_t page_mem_mutex;
+    pthread_mutex_t gif_mutex;
     struct pic_cache **pic_cache;
     pthread_mutex_t gif_cache_mutex;
     int (*fill_main_pic_area)(struct page_struct *page);

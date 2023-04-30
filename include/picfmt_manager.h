@@ -49,10 +49,12 @@ struct gif_thread_pool
     pthread_t tids[THREAD_NUMS];
     struct gif_thread_data thread_datas[THREAD_NUMS];   /* 线程数据 */
     char *exit_task[THREAD_NUMS];                       /* 退出播放的gif文件名 */
-    int idle_thread;                                    /* 空闲线程数 */
     pthread_mutex_t pool_mutex;
     pthread_cond_t thread_cond;                         /* 空闲的线程在此等待 */
     pthread_cond_t task_cond;                           /* 无空闲线程时，任务线程在此等待线程空闲 */
+    pthread_mutex_t task_mutex;                         /* 保护 task_cond*/
+    int idle_thread;                                    /* 空闲线程数 */
+    int task_wait;                                      /* 当前是否有任务在等待线程处理 */
 };
 
 

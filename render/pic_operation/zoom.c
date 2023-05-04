@@ -3,6 +3,7 @@
 
 #include <errno.h>
 #include <string.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 /* @description : 缩放图像，且只能缩小
@@ -68,7 +69,7 @@ int pic_zoom(struct pixel_data *zoomed_data,struct pixel_data *src_data)
 }
 
 /* 至少要指定目的图像的长宽 */
-int pic_zoom_with_same_bpp_and_rotate(struct pixel_data *src_data,struct pixel_data *dst_data,int rotate)
+int pic_zoom_with_same_bpp_and_rotate(struct pixel_data *dst_data,struct pixel_data *src_data,int rotate)
 {
     float x_scale,y_scale;
     unsigned char *dst_line_buf,*src_line_buf,*src_buf;
@@ -77,9 +78,9 @@ int pic_zoom_with_same_bpp_and_rotate(struct pixel_data *src_data,struct pixel_d
     unsigned int y_src,i,j,k,bytes_per_pixel;
     unsigned int x_scale_table[dst_data->width];
     unsigned int temp;
-
+    
     /* 判断条件 */
-    if(dst_data->width > src_data->width || dst_data->height > src_data->height || \
+    if(dst_data->height > src_data->height || dst_data->width > src_data->width || \
        ((dst_data->bpp != 0) && (dst_data->bpp != src_data->bpp))){
         DP_ERR("%s:invalid argument!\n",__func__);
         return -1;
@@ -88,7 +89,7 @@ int pic_zoom_with_same_bpp_and_rotate(struct pixel_data *src_data,struct pixel_d
         DP_ERR("%s:invalid argument!\n",__func__);
         return -1;
     }
-
+    
     /* 如果需要的话，为目的图像分配内存 */
     if(!dst_data->buf && !dst_data->rows_buf){
         dst_data->bpp = src_data->bpp;
@@ -100,20 +101,20 @@ int pic_zoom_with_same_bpp_and_rotate(struct pixel_data *src_data,struct pixel_d
             return -ENOMEM;
         }
     }
-
+    
     bytes_per_pixel = dst_data->bpp / 8;
     width = dst_data->width;
     height = dst_data->height;
     src_width = src_data->width;
     src_height = src_data->height;
     src_line_bytes = src_data->line_bytes;
-
+    
     /* 计算x方向上的比例 */
     x_scale = (float)src_data->width / dst_data->width;
     for(i = 0 ; i < width ; i++){
         x_scale_table[i] = i * x_scale;
     }
-
+    
     y_scale = (float)src_data->height / dst_data->height;
     if(0 == rotate){
         for(i = 0 ; i < height ; i++){
@@ -282,7 +283,6 @@ int pic_zoom_with_same_bpp_and_rotate(struct pixel_data *src_data,struct pixel_d
     
     return 0;
 }
-
 
 /* 至少要指定目的图像的长宽 */
 int pic_zoom_with_same_bpp(struct pixel_data *dst_data,struct pixel_data *src_data)

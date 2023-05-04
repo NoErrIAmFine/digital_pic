@@ -26,7 +26,7 @@ struct gif_frame_data
 {
     struct pixel_data data;
     struct gif_frame_data *next;
-    int interval;                       /* 播放下一帧数据的间隔 */
+    int delay_ms;                       /* 播放下一帧数据的间隔,单位为ms */
 };
 
 /* 每个线程的管理数据结构，内含gif的各帧数据及间隔 */
@@ -71,5 +71,9 @@ int bmp_init(void);
 int gif_init(void);
 
 int picfmt_parser_init(void);
+
+/* 根据图片文件名读入相应图片的原始数据,此函数负责分配内存,此函数不负责缩放 */
+int get_pic_pixel_data(const char *file_name,char file_type,struct pixel_data *pixel_data);
+
 
 #endif // !__PICFMT_MANAGER_H

@@ -12,6 +12,8 @@
 #include "page_manager.h"
 #include "render.h"
 
+#define GIF_CONTROL_EXT_SIZE 0x4
+#define GIF_CONTROL_EXT_CODE 0xf9
 
 static struct gif_thread_pool *thread_pool;
 // extern pthread_mutex_t cur_file_mutex;
@@ -27,7 +29,9 @@ static int gif_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
     GifRowType *screen_buffer,gif_row_buf;
     ColorMapObject *color_map;
     GifColorType *color_map_entry;
-	GifByteType *extension = NULL;
+	GifByteType *extension = NULL,*extension_temp = NULL;;
+    GifByteType trans_color = -1;
+    int ext_code,delay_ms = 0;
 	GifRecordType recoder_type = UNDEFINED_RECORD_TYPE;
     int interlaced_offset[] = {0,4,2,1};  // The way Interlaced image should
 	int interlaced_jumps[] = {8,8,4,2};   // be read - offsets and jumps...
@@ -43,6 +47,7 @@ static int gif_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
         DP_ERR("%s:open gif file failed!\n",__func__);
         return err;
     }
+    
     /* 给屏幕分配内存 */
     err = -ENOMEM;
     if ((screen_buffer = (GifRowType *)malloc(gif_file->SHeight * sizeof(GifRowType *))) == NULL){
@@ -112,7 +117,7 @@ static int gif_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
 				}
 			}
 			color_map = (gif_file->Image.ColorMap ? gif_file->Image.ColorMap : gif_file->SColorMap);
-			if(color_map==NULL){
+			if(color_map == NULL){
                 DP_ERR("%s:Gif Image does not have a color_map\n",__func__);
                 err = -1;
 				goto release_screen_buffer;
@@ -125,7 +130,6 @@ static int gif_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
             pixel_data->width = gif_file->SWidth;
             pixel_data->height = gif_file->SHeight;
             pixel_data->bpp = 24;
-            pixel_data->has_alpha = 1;
             pixel_data->line_bytes = pixel_data->width * pixel_data->bpp / 8;
             pixel_data->total_bytes = pixel_data->line_bytes * pixel_data->height;
             if((pixel_data->buf = malloc(pixel_data->total_bytes)) == NULL){
@@ -137,6 +141,10 @@ static int gif_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
                 gif_row_buf = screen_buffer[i];
                 rgb_line_buf = pixel_data->buf + i * pixel_data->line_bytes;
                 for(j = 0 ; j < gif_file->SWidth ; j++){
+                    if( trans_color != -1 && trans_color == gif_row_buf[j] ) {
+                        rgb_line_buf += 3;
+                        continue;
+                    }
                     color_map_entry = &color_map->Colors[gif_row_buf[j]];
                     // *rgb_line_buf++ = 0xff;
                     *rgb_line_buf++ = color_map_entry->Red;
@@ -146,17 +154,30 @@ static int gif_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
             }
 			goto exit_loop;
 		case EXTENSION_RECORD_TYPE:
-			/* 跳过文件中的所有扩展块*/
-			if(DGifGetExtension(gif_file,&err,&extension)==GIF_ERROR)break;
-			while(extension!=NULL){
-				if(DGifGetExtensionNext(gif_file, &extension) == GIF_ERROR)break;
+			/* 扩展块*/
+			if(DGifGetExtension(gif_file,&ext_code,&extension)==GIF_ERROR)
+                break;
+			while(extension != NULL){
+                extension_temp = extension;
+				if(DGifGetExtensionNext(gif_file, &extension) == GIF_ERROR)
+                    break;
 			}
+            extension = extension_temp;
+            if( ext_code == GIF_CONTROL_EXT_CODE && extension[0] == GIF_CONTROL_EXT_SIZE) {
+                delay_ms = (extension[3] << 8 | extension[2]) * 10;
+            }
+            
+            /* handle transparent color */
+            if( (extension[1] & 1) == 1 ) {
+                trans_color = extension[4];
+            }else{
+                trans_color = -1;
+            }
 			break;
-			
 		case TERMINATE_RECORD_TYPE:
 			break;
 		default:
-				break;
+			break;
 		}
 	}while(recoder_type != TERMINATE_RECORD_TYPE);
 
@@ -187,6 +208,7 @@ exit_loop:
     }
     memset(frame_data,0,sizeof(struct gif_frame_data));
     frame_data->data = *pixel_data;
+    frame_data->delay_ms = delay_ms;
     memcpy(rgb_line_buf,pixel_data->buf,pixel_data->total_bytes);
     frame_data->data.buf = rgb_line_buf;
 
@@ -262,7 +284,9 @@ static void *gif_thread_func(void *data)
     GifRowType *screen_buffer,gif_row_buf;
     ColorMapObject *color_map;
     GifColorType *color_map_entry;
-	GifByteType *extension = NULL;
+	GifByteType *extension = NULL,*extension_temp = NULL;
+    GifByteType trans_color = -1;
+    int ext_code,delay_ms = 0;
 	GifRecordType recoder_type = UNDEFINED_RECORD_TYPE;
     int interlaced_offset[] = {0,4,2,1};  // The way Interlaced image should
 	int interlaced_jumps[] = {8,8,4,2};   // be read - offsets and jumps...
@@ -302,7 +326,7 @@ refind:
             goto refind;
         }
         pthread_mutex_unlock(&thread_pool->pool_mutex);
-        printf("线程：%d开始执行\n",(int)pthread_self());
+        // printf("线程：%d开始执行\n",(int)pthread_self());
 
         /* 读取数据后续的帧 */
         thread_data = &thread_pool->thread_datas[task_index];
@@ -400,17 +424,18 @@ refind:
                     goto release_screen_buffer;
                 }
 
-                /* 将数据转换为ARGB数据并报存，保留透明度属性，即bpp为32 */
+                /* 将数据转换为RGB数据并报存，bpp为24 */
                 if(NULL == (frame_data = malloc(sizeof(struct gif_frame_data)))){
                     DP_ERR("%s:malloc failed!\n",__func__);
                     err = -ENOMEM;
                     goto release_screen_buffer;
                 }
                 memset(frame_data,0,sizeof(struct gif_frame_data));
+                frame_data->delay_ms = delay_ms;
+                delay_ms = 0;
                 frame_data->data.width = gif_file->SWidth;
                 frame_data->data.height = gif_file->SHeight;
                 frame_data->data.bpp = 24;
-                frame_data->data.has_alpha = 1;
                 frame_data->data.line_bytes = frame_data->data.width * frame_data->data.bpp / 8;
                 frame_data->data.total_bytes = frame_data->data.line_bytes * frame_data->data.height;
                 if((frame_data->data.buf = malloc(frame_data->data.total_bytes)) == NULL){
@@ -423,11 +448,15 @@ refind:
                     gif_row_buf = screen_buffer[i];
                     rgb_line_buf = frame_data->data.buf + i * frame_data->data.line_bytes;
                     for(j = 0 ; j < gif_file->SWidth ; j++){
+                        if( trans_color != -1 && trans_color == gif_row_buf[j] ) {
+                            rgb_line_buf += 3;
+                            continue;
+                        }
                         color_map_entry = &color_map->Colors[gif_row_buf[j]];
                         // *rgb_line_buf++ = 0xff;
-                        *rgb_line_buf++ = color_map_entry->Red; 
-                        *rgb_line_buf++ = color_map_entry->Green;
-                        *rgb_line_buf++ = color_map_entry->Blue;        
+                        *rgb_line_buf++ = color_map_entry->Red;
+                        *rgb_line_buf++ = color_map_entry->Green; 
+                        *rgb_line_buf++ = color_map_entry->Blue;      
                     }
                 } 
                 
@@ -450,7 +479,11 @@ refind:
                         pic_cache->data.in_rows = 0;
                         pic_cache->data.rows_buf = NULL;
                     }
-                    pic_zoom_with_same_bpp(&pic_cache->data,&frame_data->data);
+                     /* 如果有需要则延时 */
+                    if(frame_data->delay_ms){
+                        usleep(1000 * frame_data->delay_ms);
+                    }
+                    pic_zoom_with_same_bpp_and_rotate(&pic_cache->data,&frame_data->data,pic_cache->angle);
                     fill_pic_func = view_pic_priv->fill_main_pic_area;
                     if((err = fill_pic_func(view_pic_page))){
                         pthread_mutex_unlock(&view_pic_priv->gif_mutex);
@@ -466,12 +499,27 @@ refind:
                 
                 break;
             case EXTENSION_RECORD_TYPE:
-                /* 跳过文件中的所有扩展块*/
-                if(DGifGetExtension(gif_file,&err,&extension)==GIF_ERROR)break;
-                while(extension!=NULL){
-                    if(DGifGetExtensionNext(gif_file, &extension) == GIF_ERROR)break;
+                /* 扩展块*/
+                if(DGifGetExtension(gif_file,&ext_code,&extension)==GIF_ERROR)
+                    break;
+                while(extension != NULL){
+                    
+                    extension_temp = extension;
+                    if(DGifGetExtensionNext(gif_file, &extension) == GIF_ERROR)
+                        break;
                 }
-                break; 
+                extension = extension_temp;
+                if( ext_code == GIF_CONTROL_EXT_CODE && extension[0] == GIF_CONTROL_EXT_SIZE) {
+                    delay_ms = (extension[3] << 8 | extension[2]) * 10;
+                }
+                
+                /* handle transparent color */
+                if( (extension[1] & 1) == 1 ) {
+                    trans_color = extension[4];
+                }else{
+                    trans_color = -1;
+                }
+                break;
             case TERMINATE_RECORD_TYPE:
                 break;
             default:
@@ -502,7 +550,11 @@ refind:
                     pic_cache->data.in_rows = 0;
                     pic_cache->data.rows_buf = NULL;
                 }
-                pic_zoom_with_same_bpp(&pic_cache->data,&frame_data->data);
+                /* 如果有需要则延时 */
+                if(frame_data->delay_ms){
+                    usleep(1000 * frame_data->delay_ms);
+                }
+                pic_zoom_with_same_bpp_and_rotate(&pic_cache->data,&frame_data->data,pic_cache->angle);
                 fill_pic_func = view_pic_priv->fill_main_pic_area;
                 if((err = fill_pic_func(view_pic_page))){
                     pthread_mutex_unlock(&view_pic_priv->gif_mutex);

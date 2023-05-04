@@ -82,7 +82,7 @@ static const char *icon_file_names[] = {
     [ICON_FORMAT_SUB]   = "text_sub.png",
 };
 /* 图标对应的区域，数组下标表示图标编号，下标对应的数组项表示该图标对应的区域 */
-static const int icon_region_links[] = {
+static const unsigned int icon_region_links[] = {
     [ICON_CATALOG]      = REGION_MENU_CATALOG_ICON,
     [ICON_PROGRESS]     = REGION_MENU_PROGRESS_ICON,
     [ICON_FORMAT]       = REGION_MENU_FORMAT_ICON,

@@ -122,9 +122,6 @@ void show_page_struct(void);
  */
 int get_input_event_for_page(struct page_struct*,struct my_input_event*);
 
-/* 根据图片文件名读入相应图片的原始数据,此函数负责分配内存,此函数不负责缩放 */
-int get_pic_pixel_data(const char *file_name,char file_type,struct pixel_data *pixel_data);
-
 /*
  * @description : 将页面中的某块区域输入屏幕缓存中
  */
@@ -133,8 +130,15 @@ unsigned int calc_page_id(const char *);
 int remap_regions_to_page_mem(struct page_struct *page);
 int unmap_regions_to_page_mem(struct page_struct *page);
 int prepare_icon_pixel_datas(struct page_struct *page,struct pixel_data *icon_datas,
-                                    const char **icon_names,const int icon_region_links[],int icon_num);
+                                    const char **icon_names,const unsigned int icon_region_links[],int icon_num);
+                                    
 void destroy_icon_pixel_datas(struct page_struct *page,struct pixel_data *icon_datas,int icon_num);
+
+/* @description : 调整 src_data 图像的大小，使其刚好能放入到 dst_data 中,并复制到 dst_data 中 ；
+ * @parma : dst_data - 存放最终的图像，必须指定宽高；支持的bpp：16、24、32；
+ * @param : src_data - 源图像，对其进行缩放；支持的bpp：16、24、32 */
+int resize_pic_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_data);
+
 int invert_region(struct pixel_data *);
 int press_region(struct page_region *region,int press,int pattern);
 

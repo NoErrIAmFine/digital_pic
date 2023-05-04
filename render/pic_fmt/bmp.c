@@ -128,7 +128,7 @@ static int bmp_free_pixel_data(struct pixel_data *pixel_data)
 static int is_support_bmp(const char *file_name)
 {
     int fd,ret;
-    char buf[4];
+    char buf[8];
 
     /* 打开文件 */
     fd = open(file_name,O_RDONLY);
@@ -137,7 +137,7 @@ static int is_support_bmp(const char *file_name)
         return errno;
     }
 
-    if((ret = read(fd,buf,4)) != 4){
+    if((ret = read(fd,buf,8)) != 8){
         DP_ERR("%s:read failed!\n",__func__);
         close(fd);
         return errno;

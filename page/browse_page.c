@@ -24,26 +24,29 @@ static struct page_struct browse_page;
  * |   名字   |
  * ------------
  */
-#define FILE_ICON_WIDTH     80
+#define FILE_ICON_WIDTH     100
 #define FILE_ICON_HEIGHT FILE_ICON_WIDTH
 #define FILE_NAME_HEIGHT    20
 #define FILE_NAME_WIDTH (FILE_NAME_HEIGHT + FILE_ICON_HEIGHT)
 #define FILE_ALL_WIDTH FILE_NAME_WIDTH
 #define FILE_ALL_HEIGHT FILE_ALL_WIDTH
-#define DIR_SELECT_ICON_WIDTH 30
+#define DIR_SELECT_ICON_WIDTH 40
 
-#define REGION_MENU_HOME        0
-#define REGION_MENU_GOBACK      1
-#define REGION_MENU_SELECT      2
-#define REGION_MENU_PRE_PAGE    3
-#define REGION_MENU_NEXT_PAGE   4
-#define REGION_MAIN_FILE_PATH   5
-#define REGION_MAIN_FILE_PAGES  6
-#define REGION_MAIN_FILE_DIR    7          //专门用于刷新显存
-#define REGION_FILE_DIR_BASE    8
-
+/* 用于给区域编号的枚举 */
+enum region_info{
+    REGION_MENU_HOME = 0,
+    REGION_MENU_GOBACK,      
+    REGION_MENU_SELECT,      
+    REGION_MENU_PRE_PAGE,    
+    REGION_MENU_NEXT_PAGE, 
+    REGION_MAIN,                        //主体区域，包括下面三个  
+    REGION_MAIN_FILE_PATH,   
+    REGION_MAIN_FILE_PAGES,  
+    REGION_MAIN_FILE_DIR,              //专门用于刷新显存
+    REGION_FILE_DIR_BASE,    
+};
 #define REGION_FILE_PATH_HEIGHT   40
-#define REGION_FILE_PAGES_HEIGHT  30
+#define REGION_FILE_PAGES_HEIGHT  40
 
 /* 以下是本页面要用到的图标信息 */
 enum icon_info{
@@ -63,8 +66,16 @@ enum icon_info{
     ICON_FILETYPE_FILE_OTHER,
     ICON_DIR_SELECTED,
     ICON_DIR_UNSELECTED,
-    ICON_DOT_SELECTED,
-    ICON_DOT_UNSELECTED,
+    ICON_NUM_0,
+    ICON_NUM_1,
+    ICON_NUM_2,
+    ICON_NUM_3,
+    ICON_NUM_4,
+    ICON_NUM_5,
+    ICON_NUM_6,
+    ICON_NUM_7,
+    ICON_NUM_8,
+    ICON_NUM_9,
     ICON_NUMS, 
 };
 
@@ -84,15 +95,52 @@ static const char *icon_file_names[] = {
     [ICON_FILETYPE_FILE_OTHER]  = "other.png",
     [ICON_DIR_SELECTED]         = "dir_selected.png",
     [ICON_DIR_UNSELECTED]       = "dir_unselected.png",
-    [ICON_DOT_SELECTED]         = "dot_selected.png",
-    [ICON_DOT_UNSELECTED]       = "dot_unselected.png",
     [ICON_SAVE_AUTOPLAY_DIR]    = "save_autoplay_dir.png",
     [ICON_START_AUTOPLAY]       = "start_autoplay.png",
+    [ICON_NUM_0]                = "num_0.png",
+    [ICON_NUM_1]                = "num_1.png",
+    [ICON_NUM_2]                = "num_2.png",
+    [ICON_NUM_3]                = "num_3.png",
+    [ICON_NUM_4]                = "num_4.png",
+    [ICON_NUM_5]                = "num_5.png",
+    [ICON_NUM_6]                = "num_6.png",
+    [ICON_NUM_7]                = "num_7.png",
+    [ICON_NUM_8]                = "num_8.png",
+    [ICON_NUM_9]                = "num_9.png",
 };
 
+/* 图标对应的区域，数组下标表示图标编号，下标对应的数组项表示该图标对应的区域,用于缩放图标 */
+static unsigned int icon_region_links[] = {
+    [ICON_MENU_HOME]            = REGION_MENU_HOME,
+    [ICON_MENU_GOBACK]          = REGION_MENU_GOBACK,
+    [ICON_MENU_SELECT]          = REGION_MENU_SELECT,
+    [ICON_MENU_PRE_PAGE]        = REGION_MENU_PRE_PAGE,
+    [ICON_MENU_NEXT_PAGE]       = REGION_MENU_NEXT_PAGE,
+    [ICON_FILETYPE_DIR]         = REGION_FILE_DIR_BASE, 
+    [ICON_FILETYPE_FILE_BMP]    = REGION_FILE_DIR_BASE,
+    [ICON_FILETYPE_FILE_JPEG]   = REGION_FILE_DIR_BASE,
+    [ICON_FILETYPE_FILE_PNG]    = REGION_FILE_DIR_BASE,
+    [ICON_FILETYPE_FILE_GIF]    = REGION_FILE_DIR_BASE,
+    [ICON_FILETYPE_FILE_TXT]    = REGION_FILE_DIR_BASE,
+    [ICON_FILETYPE_FILE_OTHER]  = REGION_FILE_DIR_BASE,
+    [ICON_DIR_SELECTED]         = 0,                    /* 这几个需要在运行时才能确定 */
+    [ICON_DIR_UNSELECTED]       = 0,
+    [ICON_SAVE_AUTOPLAY_DIR]    = REGION_MENU_HOME,
+    [ICON_START_AUTOPLAY]       = REGION_MENU_HOME,
+    [ICON_NUM_0]                = 0,                    /* 这几个需要在运行时才能确定 */
+    [ICON_NUM_1]                = 0,
+    [ICON_NUM_2]                = 0,
+    [ICON_NUM_3]                = 0,
+    [ICON_NUM_4]                = 0,
+    [ICON_NUM_5]                = 0,
+    [ICON_NUM_6]                = 0,
+    [ICON_NUM_7]                = 0,
+    [ICON_NUM_8]                = 0,
+    [ICON_NUM_9]                = 0,
+};
 static struct pixel_data icon_pixel_datas[ICON_NUMS];
 
-/* 与文件夹选择相关的几个全局变量 */
+/* 与文件夹选择相关的几个全局变量(用于连播) */
 #define MAX_SELECTED_DIR 10
 static bool dir_select_status = 0;                  //标志位
 static int max_selected_dir = MAX_SELECTED_DIR;     //最多选择10个文件夹
@@ -104,9 +152,20 @@ static const char *const root_dir = DEFAULT_DIR;    //默认的根路径
 static char *cur_dir;                               //在初始化函数中设置
 static struct dir_entry **cur_dir_contents;
 static unsigned int cur_dirent_nums;
-static int start_file_index = 0;
+static int start_file_index = 0;                    //当前页的起始文件索引
 static unsigned int file_cols,file_rows,files_per_page;
 static bool dir_contents_generated = 0;
+
+/* 页数信息（用于显示底部页码） */
+#define PAGE_NUM_HEIGHT 30
+static int page_num_height;         //页码高度；对于页码宽度，以及总共能显示多少个页码，这都是动态生成的
+static int page_num_padding = 40;   //页码边距 
+static int page_num_interval = 40;  //页码间距
+
+/* 页面缓存信息，为了更好的响应 */
+#define PAGE_CACHE_COUNT 3          //页面缓存的数量
+static struct pixel_data *page_caches[PAGE_CACHE_COUNT];
+static struct pixel_data ** const cur_page_cache = &page_caches[PAGE_CACHE_COUNT / 2];
 
 static int browse_page_calc_file_layout(struct page_struct *page)
 {
@@ -128,9 +187,9 @@ static int browse_page_calc_file_layout(struct page_struct *page)
     if(layout->width >= layout->height){
         /* 暂只考虑横屏的情况 */
         x_start = layout->regions[0].width;
-        y_start = layout->regions[5].height;
+        y_start = layout->regions[REGION_MAIN_FILE_PATH].height;
         width = layout->width - x_start;
-        height = layout->height - layout->regions[5].height - layout->regions[6].height;
+        height = layout->height - layout->regions[REGION_MAIN_FILE_PAGES].height - layout->regions[REGION_MAIN_FILE_PATH].height;
         
     }
         
@@ -166,7 +225,15 @@ static int browse_page_calc_file_layout(struct page_struct *page)
     x_cursor = x_start + x_delta;
     y_cursor = y_start + y_delta;
     if(layout->width >= layout->height){            /* 暂只考虑横屏的情况 */
-        /* 此区域代表整个文件显示区域,专门用于刷新显存 */
+        /* 此区域代表整个主体区域，包含文件路径、文件文件夹浏览、页码这几个区域 */
+        regions[REGION_MAIN].x_pos  = x_start;
+        regions[REGION_MAIN].y_pos  = 0;
+        regions[REGION_MAIN].width  = width;
+        regions[REGION_MAIN].height = layout->height;
+        regions[REGION_MAIN].index  = REGION_MAIN;
+        regions[REGION_MAIN].level  = 0;
+
+        /* 此区域代表整个文件显示区域 */
         regions[REGION_MAIN_FILE_DIR].x_pos = x_start;
         regions[REGION_MAIN_FILE_DIR].y_pos = y_start;
         regions[REGION_MAIN_FILE_DIR].width = width;
@@ -180,13 +247,14 @@ static int browse_page_calc_file_layout(struct page_struct *page)
         region_offset1 = k + num_files * 3;
         for(i = 0 ; i < rows ; i++){
             for(j = 0 ; j < cols ; j++){
-                /* 文件选择区域 */
+                /* 文件夹选择区域(右上角的选择框) */
                 regions[region_offset1].x_pos  = x_cursor + file_all_width - DIR_SELECT_ICON_WIDTH + 10;
                 regions[region_offset1].y_pos  = y_cursor - 10;
                 regions[region_offset1].width  = DIR_SELECT_ICON_WIDTH;
                 regions[region_offset1].height = DIR_SELECT_ICON_WIDTH;
                 regions[region_offset1].index  = region_offset1;
                 regions[region_offset1].level  = 2;
+                regions[region_offset1].invisible = 1;
                 region_offset1++;
 
                 /* 用于响应点击事件的区域,注意level为1 */
@@ -205,6 +273,7 @@ static int browse_page_calc_file_layout(struct page_struct *page)
                 regions[k].height = file_icon_width;
                 regions[k].index = k;
                 regions[k].level = 0;
+                regions[k].invisible = 1;
                 k++;
 
                 /* 文件名区域 */
@@ -214,6 +283,7 @@ static int browse_page_calc_file_layout(struct page_struct *page)
                 regions[k].height = file_name_height;
                 regions[k].index = k;
                 regions[k].level = 0;
+                regions[k].invisible = 1;
                 k++;
 
                 x_cursor += (file_all_width + x_delta);
@@ -223,6 +293,9 @@ static int browse_page_calc_file_layout(struct page_struct *page)
         }
     }
     
+    /* 用于确定图标大小 */
+    icon_region_links[ICON_DIR_SELECTED] = REGION_FILE_DIR_BASE + files_per_page * 3;
+    icon_region_links[ICON_DIR_UNSELECTED] = REGION_FILE_DIR_BASE + files_per_page * 3;
     return 0;
 }
 
@@ -233,6 +306,7 @@ static int browse_page_calc_menu_layout(struct page_struct *page)
     unsigned int width,height;
     unsigned int x_cursor,y_cursor,unit_distance;
     unsigned int i;
+    unsigned int temp;
 
     width = page->page_layout.width;
     height = page->page_layout.height;
@@ -301,15 +375,21 @@ static int browse_page_calc_menu_layout(struct page_struct *page)
         /* 文件路径显示区域 */
         regions[REGION_MAIN_FILE_PATH].x_pos  = unit_distance;
         regions[REGION_MAIN_FILE_PATH].y_pos  = 0;
-        regions[REGION_MAIN_FILE_PATH].height = 30 ;
+        regions[REGION_MAIN_FILE_PATH].height = 40 ;
         regions[REGION_MAIN_FILE_PATH].width  = width - unit_distance ;
         
         /* 页数信息显示区域 */
         regions[REGION_MAIN_FILE_PAGES].x_pos  = unit_distance;
-        regions[REGION_MAIN_FILE_PAGES].y_pos  = height - 30;
-        regions[REGION_MAIN_FILE_PAGES].height = 30 ;
+        regions[REGION_MAIN_FILE_PAGES].y_pos  = height - 40;
+        regions[REGION_MAIN_FILE_PAGES].height = 40 ;
         regions[REGION_MAIN_FILE_PAGES].width  = width - unit_distance ;
-        
+        page_num_height = regions[REGION_MAIN_FILE_PAGES].height - 10;
+        /* 确定相应数字图标的大小 */
+        temp = page_num_height * 6 / 10;
+        for(i = ICON_NUM_0 ; i <= ICON_NUM_9 ; i++){
+            icon_region_links[i] = (1 << 31) | (((temp * 2 / 3) & 0xfff) << 12) | (temp & 0xfff);
+            icon_region_links[i] = (1 << 31) | (((temp * 2 / 3)  & 0xfff) << 12) | (temp & 0xfff);
+        }
     }else{
         /* 竖屏 */
         /*	 iXres/4
@@ -385,105 +465,7 @@ static int browse_page_calc_layout(struct page_struct *page)
     return 0;
 }
 
-/* 很遗憾，这几个准备图标的函数要求图标长宽必须相同，否则会出现什么我也不确定 */
-static int prepare_icon_pixel_data(struct page_struct *browse_page)
-{
-    int i,j,ret;
-    struct pixel_data pixel_data;
-    struct page_region *regions = browse_page->page_layout.regions;
-    struct picfmt_parser *png_parser = get_parser_by_name("png");
-    const char file_path[] = DEFAULT_ICON_FILE_PATH;
-    char file_full_path[100];
-    unsigned int menu_icon_width;
-
-    if(browse_page->icon_prepared){
-        return -1;
-    }
-
-    menu_icon_width = regions[REGION_MENU_HOME].width;
-
-    for(i = 0 ; i < ICON_NUMS ; i++){
-        char *file_name;
-        int file_name_malloc = 0;
-       
-        /* 如果没有指定文件，直接跳过 */
-        if(!icon_file_names[i]){
-            continue;
-        }
-        /* 构造文件名，为了预防文件名过长导致出错,虽然这发生的概率极小 */
-        if((strlen(file_path) + strlen(icon_file_names[i]) + 1) > 99){
-            file_name = malloc(strlen(file_path) + strlen(icon_file_names[i]) + 2);
-            if(!file_name){
-                DP_ERR("%s:malloc failed!\n");
-                return -ENOMEM;
-            }
-            sprintf(file_name,"%s/%s",file_path,icon_file_names[i]);
-            file_name_malloc = 1;
-        }else{
-            sprintf(file_full_path,"%s/%s",file_path,icon_file_names[i]);
-        }
-    
-        memset(&pixel_data,0,sizeof(pixel_data));
-        if(file_name_malloc){
-            ret = png_parser->get_pixel_data_in_rows(file_name,&pixel_data);
-        }else{
-            ret = png_parser->get_pixel_data_in_rows(file_full_path,&pixel_data);
-        } 
-        if(ret){
-            if(ret == -2){
-                //to-do 此种错误是可修复的
-            }
-            DP_ERR("%s:png get_pixel_data_in_rows failed!\n",__func__);
-            return -ENOMEM;
-        } 
-        
-        /* 确定图标要缩放到的大小 */
-        memset(&icon_pixel_datas[i],0,sizeof(struct pixel_data));
-        if(i < ICON_FILETYPE_DIR){
-            /* 菜单图标 */
-            icon_pixel_datas[i].width  = menu_icon_width;
-            icon_pixel_datas[i].height = menu_icon_width;
-        }else if(i < ICON_DIR_SELECTED){
-            /* 文件图标 */
-            icon_pixel_datas[i].width = FILE_ICON_WIDTH;
-            icon_pixel_datas[i].height = FILE_ICON_WIDTH;
-        }else if(i < ICON_DOT_SELECTED){
-            /* 文件选择图标 */
-            icon_pixel_datas[i].width = DIR_SELECT_ICON_WIDTH;
-            icon_pixel_datas[i].height = DIR_SELECT_ICON_WIDTH;
-        }else{
-            /* 圆点图标 */
-            icon_pixel_datas[i].width = 20;
-            icon_pixel_datas[i].height = 20;
-        }
-
-        /* 进行缩放 */
-        ret = pic_zoom_with_same_bpp(&icon_pixel_datas[i],&pixel_data);
-        if(ret){
-            DP_ERR("%s:pic_zoom_with_same_bpp failed!\n",__func__);
-            return -1;
-        }
-        
-        if(file_name_malloc){
-            free(file_name);
-        }
-        /* 释放由png解析函数分配的内存 */
-        if(pixel_data.in_rows){
-            for(j = 0 ; j < pixel_data.height ; j++){
-                free(pixel_data.rows_buf[j]);
-            }
-            free(pixel_data.rows_buf);
-        }
-        if(pixel_data.buf){
-            free(pixel_data.buf);
-        }
-    }
-    browse_page->icon_prepared = 1;
-    return 0;
-}
-
-/* 在此函数中将会计算好页面的布局情况，浏览页面主要可分为两部分：1.菜单部分   2.文件浏览部分
- */
+/* 在此函数中将会计算好页面的布局情况，浏览页面主要可分为两部分：1.菜单部分   2.文件浏览部分 */
 static int browse_page_init(void)
 {
     int ret;
@@ -519,19 +501,6 @@ static int browse_page_init(void)
     return 0;
 }
 
-/* 对应的销毁函数，可能用不上，但按理说应该是需要的 */
-static void destroy_icon_pixel_data(void)
-{
-    int i;
-    if(browse_page.icon_prepared){
-        for(i = 0 ; i < ICON_NUMS ; i++){
-            free(icon_pixel_datas[i].buf);
-            memset(&icon_pixel_datas[i],0,sizeof(struct pixel_data));
-        }
-    }
-    browse_page.icon_prepared = 0; 
-}
-
 /* 调用这个函数,几乎会释放该页面占用的所有资源 */
 static void browse_page_exit(void)
 {
@@ -544,7 +513,7 @@ static void browse_page_exit(void)
     unmap_regions_to_page_mem(&browse_page);
 
     /* 删除图标数据 */
-    destroy_icon_pixel_data();
+    destroy_icon_pixel_datas(&browse_page,icon_pixel_datas,ICON_NUMS);
 
     /* 删除目录信息 */
     if(cur_dir_contents){
@@ -564,10 +533,10 @@ static int fill_menu_icon_area(struct page_struct *browse_page)
     int i,ret;
     struct page_region *regions = browse_page->page_layout.regions;
 
-    if(!browse_page->icon_prepared){
-        prepare_icon_pixel_data(browse_page);
-    }else if(!browse_page->already_layout){
+    if(!browse_page->already_layout){
         browse_page_calc_layout(browse_page);
+    }else if(!browse_page->icon_prepared){
+        prepare_icon_pixel_datas(browse_page,icon_pixel_datas,icon_file_names,icon_region_links,ICON_NUMS); 
     }else if(!browse_page->region_mapped){
         remap_regions_to_page_mem(browse_page);
     }
@@ -598,15 +567,15 @@ static int fill_menu_icon_area(struct page_struct *browse_page)
 }
 
 /* 填充文件路径区域,此函数会被fill_file_dir_area调用 */
-static int fill_file_path_area(struct page_struct *page)
+static int fill_file_path_area(struct pixel_data *pixel_data)
 {
     int font_size;
     int ret;
-    struct page_region *path_region = &page->page_layout.regions[REGION_MAIN_FILE_PATH];
+    // struct page_region *path_region = &browse_page.page_layout.regions[REGION_MAIN_FILE_PATH];
 
-    font_size = path_region->pixel_data->height;
-    clear_pixel_data(path_region->pixel_data,BACKGROUND_COLOR);
-    ret = get_string_bitamp_from_buf(cur_dir,0,"utf-8",path_region->pixel_data,FONT_ALIGN_HORIZONTAL_CENTER,0xfd8,font_size);
+    font_size = pixel_data->height - 10;
+    clear_pixel_data(pixel_data,BACKGROUND_COLOR);
+    ret = get_string_bitamp_from_buf(cur_dir,0,"utf-8",pixel_data,FONT_ALIGN_HORIZONTAL_CENTER,0xfd8,font_size);
     if(ret < 0){
         DP_ERR("%d:get_string_bitamp_from_buf failed!\n",__func__);
         return ret;
@@ -615,79 +584,205 @@ static int fill_file_path_area(struct page_struct *page)
 }
 
 /* 填充页数信息,此函数会被fill_file_dir_area调用 */
-static int fill_pages_info_area(struct page_struct *page)
+static int fill_pages_info_area(struct pixel_data *pixel_data,int start_file_index)
 {
-    return 0;
-}
+#define LINE_COLOR 0x4d4d       /* 页标圆圈线条颜色 */
+#define LINE_WIDTH 3            /* 页标圆圈线条宽度*/
+#define FILL_COLOR 0xd4d4       /* 被选中的页标填充的颜色*/
+    int cur_page = (start_file_index / files_per_page) + 1;
+    int total_pages =  (cur_dirent_nums - 1) / files_per_page + 1;
 
-/* 填充文件浏览区域 */
-static int fill_file_dir_area(struct page_struct *browse_page)
-{
-    struct page_region *regions = browse_page->page_layout.regions;
-    unsigned int region_nums = browse_page->page_layout.region_num;
-    unsigned int base_region_index;
-    unsigned int base_icon_index;
-    unsigned int font_size;
-    unsigned int i,ret;
-    unsigned int file_type;
+    struct page_region *pages_region = &browse_page.page_layout.regions[REGION_MAIN_FILE_PAGES];
+    struct pixel_data *region_data = pixel_data;
+    struct pixel_data temp_data;
     
-    if(!browse_page->icon_prepared){
-        prepare_icon_pixel_data(browse_page);
-    }else if(!dir_contents_generated){
-        DP_WARNING("%s:dir contents has not generated!\n",__func__);
-        return -1;
-    }
+    unsigned char page_num_widths[16] = {0};        /* 保存临时生成的页码宽度 */
+    unsigned char page_num_digitals[16][16] = {{0}};  /* 页码对应的每一位数字，10进制 */
+    short array_base_index = 8;
+    short num_height,num_width;                       /* 每一位数字对应的宽高 */
+    short num_count,num_start_x;
+    short page_num_width;
+    short region_width = region_data->width - page_num_padding * 2;
+    short region_height = region_data->height;
+    short cur_total_width = 0;                        /* 当前已生成的页码内容的总体宽度 */
+    short start_x,start_y;
+    short i,j,k;
+    short x1,x2;
+    float r1,r2,temp1;
+    short temp,bytes_per_pixel;
+    unsigned char *line_buf;
+    
+    num_height = page_num_height * 6 / 10;
+    num_width = num_height * 2 / 3;
+    num_start_x = page_num_height / 5;
+    
+    /* 清理该区域 */
+    clear_pixel_data(region_data,BACKGROUND_COLOR);
 
-    base_region_index = REGION_FILE_DIR_BASE;
-    base_icon_index = ICON_FILETYPE_DIR;
-    font_size = regions[base_region_index + 1].height;
-   
-    /* 先清理 */
-    clear_pixel_data(regions[REGION_MAIN_FILE_DIR].pixel_data,BACKGROUND_COLOR);
+    /* 先算出当前页码对应的显示位图的宽度及每位数字 */
+    temp = cur_page;
+    num_count = 0;
+    do{
+        page_num_digitals[array_base_index][1 + num_count++] = temp % 10;
+    }while((temp /= 10) > 0);
+    page_num_digitals[array_base_index][0] = num_count;   //第一位存储该页码要用多少个数字显示
+    page_num_widths[array_base_index] = num_count * num_width + num_start_x * 2;
+    if(page_num_widths[array_base_index] < page_num_height)
+        page_num_widths[array_base_index] = page_num_height;
+    cur_total_width = page_num_widths[array_base_index];
+    
+    
+    /* 先算出能显示多少的页码，以及这个区域的总宽度 */
+    for(i = 1 ; i < 9 ; i++){     
+        /* 尝试以当前页为中心，依次左边右边各填一页，直到总体宽度超出 */
+        if((temp = cur_page - i) > 0){
+            num_count = 0;
+            do{
+                page_num_digitals[array_base_index - i][1 + num_count++] = temp % 10;
+            }while((temp /= 10) > 0);
+            page_num_digitals[array_base_index - i][0] = num_count;   //第一位存储该页码要用多少个数字显示
+            page_num_widths[array_base_index - i] = num_count * num_width + num_start_x * 2;
+            if(page_num_widths[array_base_index - i] < page_num_height)
+                page_num_widths[array_base_index - i] = page_num_height;
+            cur_total_width += (page_num_widths[array_base_index - i] + page_num_interval);
 
-    /* 需要注意的一点,对于填充内容而言,一个目录项对应两个区域,一个图标,一个文字 */
-    for(i = 0 ; i < files_per_page ; i++){
-        if((start_file_index + i) >= cur_dirent_nums){
-            /* 已经填充完了所有目录项,直接退出 */
-            break;
-        }
-        /* 文件夹 */
-        if(FILETYPE_DIR == cur_dir_contents[start_file_index + i]->type){
-            /* 填充图标 */
-            merge_pixel_data(regions[base_region_index + 2 * i].pixel_data,&icon_pixel_datas[base_icon_index + FILETYPE_DIR]);
-            /* 如果当前处于目录选择状态，则填充相应图标 */
-            if(dir_select_status){
-                merge_pixel_data(regions[base_region_index + 3 * files_per_page + i].pixel_data,&icon_pixel_datas[ICON_DIR_UNSELECTED]);
+            if(cur_total_width >= region_width){
+                cur_total_width -= (page_num_widths[array_base_index - i] + page_num_interval);
+                page_num_widths[array_base_index - i] = 0;
+                page_num_digitals[array_base_index - i][0] = 0;
+                break;
             }
-
-            /* 填充文字 */
-            get_string_bitamp_from_buf(cur_dir_contents[start_file_index + i]->name,0,"utf-8",\
-            regions[base_region_index + i * 2 + 1].pixel_data,FONT_ALIGN_HORIZONTAL_CENTER,0xff00,font_size);
-            
-        }else if(FILETYPE_REG == cur_dir_contents[start_file_index + i]->type){
-            /* 文件 */
-            /* 判断文件类型信息已经获取过了,直接使用即可 */
-            file_type = cur_dir_contents[start_file_index + i]->file_type;
-            /* 填充图标 */
-            merge_pixel_data(regions[base_region_index + 2 * i].pixel_data,&icon_pixel_datas[base_icon_index + file_type]);
-            /* 填充文字 */
-            get_string_bitamp_from_buf(cur_dir_contents[start_file_index + i]->name,0,"utf-8",\
-            regions[base_region_index + i * 2 + 1].pixel_data,FONT_ALIGN_HORIZONTAL_CENTER,0xff00,font_size);
         }
+            
+        if((temp = cur_page + i) <= total_pages){
+            num_count = 0;
+            do{
+                page_num_digitals[array_base_index + i][1 + num_count++] = temp % 10;
+            }while((temp /= 10) > 0);
+            
+            page_num_digitals[array_base_index + i][0] = num_count;
+            page_num_widths[array_base_index + i] = num_count * num_width + num_start_x * 2;
+            if(page_num_widths[array_base_index + i] < page_num_height)
+                page_num_widths[array_base_index + i] = page_num_height;
+            cur_total_width += (page_num_widths[array_base_index + i] + page_num_interval);
+
+            if(cur_total_width >= region_width){
+                cur_total_width -= (page_num_widths[array_base_index + i] + page_num_interval);
+                page_num_widths[array_base_index + i] = 0;
+                page_num_digitals[array_base_index + i][0] = 0;
+                break;
+            }  
+        }  
+    }
+
+    /* 计算开始描画的起点 */
+    start_x = (region_data->width - cur_total_width) / 2;
+    start_y = (region_data->height - page_num_height) / 2;
+    
+    /* 开始描画 */
+    /* 映射区域内存 */
+    memset(&temp_data,0,sizeof(struct pixel_data));
+    temp_data.height = page_num_height;
+    temp_data.bpp = pages_region->pixel_data->bpp;
+    temp_data.in_rows = 1;
+    bytes_per_pixel = temp_data.bpp / 8;
+    if(NULL == (temp_data.rows_buf = malloc(sizeof(unsigned char *) * temp_data.height))){
+        DP_ERR("%s:malloc failed!\n",__func__);
+        return -ENOMEM;
+    }
+    for(i = 0 ; i < temp_data.height ; i++){
+        temp_data.rows_buf[i] = region_data->rows_buf[start_y + i]  + start_x * region_data->bpp / 8;
+    }
+    
+    r2 = (float)(page_num_height / 2) * (page_num_height / 2);
+    r1 = (float)(page_num_height / 2 - 3) * (page_num_height / 2 - 3);
+    x1 = page_num_height / 2;
+    for(i = 0 ; i < 16 ; i++){
+        /* 被选中的页做单独处理 */
+        if(0 == page_num_widths[i])
+            continue;
         
+        temp_data.width = page_num_widths[i];
+        temp_data.line_bytes = temp_data.width * temp_data.bpp / 8;
+
+        /* 画半圆矩形边框 */
+        x2 = page_num_widths[i] - x1;
+        page_num_width = page_num_widths[i];
+        for(j = 0 ; j < page_num_height ; j++){
+            line_buf = temp_data.rows_buf[j] ;
+            for(k = 0 ; k < page_num_width ; k++){
+                if(k < x1){       /* 半圆区域 */
+                    temp1 = (float)(x1 - k) * (x1 - k) + (x1 - j) * (x1 - j);
+                }else if(k > x2){
+                    temp1 = (float)(k - x2) * (k - x2) + (x1 - j) * (x1 - j);
+                }else{
+                    *(unsigned short *)line_buf = LINE_COLOR;
+                    line_buf += bytes_per_pixel;
+                    continue;
+                }
+                if(temp1 > r2){      /* 区域外 */
+                    line_buf += bytes_per_pixel;  
+                }else if(temp1 >= r1){ /* 线内,需填充 */
+                    *(unsigned short *)line_buf = LINE_COLOR;
+                    line_buf += bytes_per_pixel;
+                }else{
+                    /* 内部区域,直接跳转到另一侧,如果是选中页则填充 */
+                    if(__glibc_unlikely(i == array_base_index)){    //填充
+                        temp = k + 2 * (x1 - k) + (x2 - x1);
+                        for( ; k <= temp ; k++){
+                            *(unsigned short *)line_buf = FILL_COLOR;
+                            line_buf += bytes_per_pixel;
+                        }
+                    }else{  //跳转
+                        line_buf += (2 * (x1 - k) + (x2 - x1) ) * bytes_per_pixel;
+                        k += 2 * (x1 - k) + (x2 - x1) ; 
+                    }
+                }
+            }
+        }
+        start_x += page_num_width + page_num_interval;
+        for(j = 0 ; j < temp_data.height ; j++){
+            temp_data.rows_buf[j] = region_data->rows_buf[start_y + j]  + start_x * region_data->bpp / 8;
+        }
     }
-    /* 填充文件路径 */
-    ret = fill_file_path_area(browse_page);
-    if(ret < 0){
-        DP_ERR("%d:fill_file_path_area failed!\n",__func__);
-        return ret;
-    }
-    /* 填充页数信息区域 */
-    ret = fill_pages_info_area(browse_page);
-    if(ret < 0){
-        DP_ERR("%d:fill_pages_info_area failed!\n",__func__);
-        return ret;
-    }
+
+    /* 依次填充数字 */
+    start_y = (region_data->height - page_num_height) / 2 + (page_num_height - num_height) / 2;
+    start_x = (region_data->width - cur_total_width) / 2 + num_start_x;
+    temp_data.width = num_width;
+    temp_data.height = num_height;
+    temp_data.line_bytes = temp_data.width * bytes_per_pixel;
+    for(i = 0 ; i < 16 ; i++){
+        /* 被选中的页做单独处理 */
+        if(0 == page_num_digitals[i][0])
+            continue;
+
+        num_count = page_num_digitals[i][0];
+        
+        if(num_count == 1){
+            temp = start_x + (page_num_height - num_width - num_start_x * 2) / 2;
+            for(j = 0 ; j < num_height ; j++){
+                temp_data.rows_buf[j] = region_data->rows_buf[start_y + j]  + temp * region_data->bpp / 8;
+            }
+        }else{
+            temp = start_x;
+            for(j = 0 ; j < num_height ; j++){
+                temp_data.rows_buf[j] = region_data->rows_buf[start_y + j]  + temp * region_data->bpp / 8;
+            }
+        }
+
+        for( ; num_count-- ;){
+            merge_pixel_data(&temp_data,&icon_pixel_datas[ICON_NUM_0 + page_num_digitals[i][num_count + 1]]);
+            for(j = 0 ; j < temp_data.height ; j++){
+                temp_data.rows_buf[j] += num_width * region_data->bpp / 8;
+            }
+        }
+        start_x += page_num_widths[i] + page_num_interval;
+        for(j = 0 ; j < temp_data.height ; j++){
+            temp_data.rows_buf[j] = region_data->rows_buf[start_y + j]  + start_x * region_data->bpp / 8;
+        }
+    } 
+
     return 0;
 }
 
@@ -715,48 +810,16 @@ static void flush_menu_icon_area(struct page_struct *page)
     flush_page_region(&regions[REGION_MENU_NEXT_PAGE],display);
 }
 
-/* 使能文件夹选择状态 */
-static void enable_dir_select_status(struct page_struct *browse_page,bool enable)
-{
-    struct page_region *regions = browse_page->page_layout.regions;
-    int dir_select_region_base;
-    int i;
-
-    if(!browse_page->already_layout){
-        return ;
-    }
-
-    dir_select_region_base = REGION_FILE_DIR_BASE + files_per_page * 3;
-    if(enable){
-        dir_select_status = 1;
-        for(i = 0 ; i < files_per_page ; i++){
-            regions[dir_select_region_base + i].invisible = 0;
-        }
-    }else{
-        dir_select_status = 0;
-        for(i = 0 ; i < files_per_page ; i++){
-            regions[dir_select_region_base + i].invisible = 1;
-        }
-    }
-    clear_pixel_data(regions[REGION_MAIN_FILE_DIR].pixel_data,BACKGROUND_COLOR);
-    fill_file_dir_area(browse_page);
-    flush_file_dir_area(browse_page);
-    fill_menu_icon_area(browse_page);
-    flush_menu_icon_area(browse_page);
-}
-
 /* 用于填充各区域 */
 static int browse_page_fill_layout(struct page_struct *browse_page)
 {
     int ret;
 
     /* 如果想加个整体的背景，应该最先加进去 */
-    //...
-    DP_ERR("enter:%s\n",__func__);
     
     /* 准备各种图标数据 */
     if(!browse_page->icon_prepared){
-        ret = prepare_icon_pixel_data(browse_page);
+        prepare_icon_pixel_datas(browse_page,icon_pixel_datas,icon_file_names,icon_region_links,ICON_NUMS);
         if(ret){
             DP_ERR("%s:prepare_icon_pixel_data failed!\n",__func__);
             return -1;
@@ -769,13 +832,241 @@ static int browse_page_fill_layout(struct page_struct *browse_page)
         DP_ERR("%s:prepare_file_icon_data failed!\n",__func__);
         return -1;
     }
+    return 0;
+}
+
+
+/* @description : 根据指定的开始文件索引，填充主体区域，可用于实现缓存
+ * @param : start_file_index - 要为其填充内容的某页第一个文件所对应的索引*/
+static int fill_main_area(int start_file_index)
+{
+    int ret;
+    int i,last_file_index;
+    int base_region_index,base_icon_index;
+    int font_size,file_type;
+    struct page_region *regions = browse_page.page_layout.regions;
+    struct page_region *main_region = &browse_page.page_layout.regions[REGION_MAIN];
+    struct pixel_data temp_data;
+    char *file_name;
+    char file_name_malloc = 0;
+    char file_full_path[100];
+
+    /* 清理内容 */
+    clear_pixel_data(main_region->pixel_data,BACKGROUND_COLOR);
     
-    /* 填充文件浏览区域 */
-    ret = fill_file_dir_area(browse_page);
-    if(ret){
-        DP_ERR("%s:fill_file_dir_area failed!\n",__func__);
+    /* 获取文件类型,如果当前未获取文件类型则先获取 */
+    if(!cur_dir_contents[start_file_index]->file_type){
+        last_file_index = (start_file_index + files_per_page) >= cur_dirent_nums ? cur_dirent_nums - start_file_index : files_per_page;
+        for(i = 0 ; i < last_file_index ; i++){
+            cur_dir_contents[start_file_index + i]->file_type = get_file_type(cur_dir,cur_dir_contents[start_file_index + i]->name);
+        }
+    }
+    
+    /* 计算几个填充内容时要用的变量 */
+    base_region_index = REGION_FILE_DIR_BASE;
+    base_icon_index = ICON_FILETYPE_DIR;
+    font_size = regions[base_region_index + 1].height;
+    
+    /* 填充内容 */
+    /* 主体的文件文件夹浏览区域 */
+    /* 需要注意的一点,对于填充内容而言,一个目录项对应三个区域,一个图标,一个文字，一个可选的缩略图标 */
+    for(i = 0 ; i < files_per_page ; i++){
+        if((start_file_index + i) >= cur_dirent_nums){
+            break;          /* 已经填充完了所有目录项,直接退出 */
+        }
+        /* 文件夹,对于目录来说比较简单 */
+        if(FILETYPE_DIR == cur_dir_contents[start_file_index + i]->type){
+            /* 填充图标 */
+            merge_pixel_data(regions[base_region_index + 2 * i].pixel_data,&icon_pixel_datas[ICON_FILETYPE_DIR]);
+            /* 如果当前处于目录选择状态，则填充相应图标 */
+            if(dir_select_status){
+                merge_pixel_data(regions[base_region_index + 3 * files_per_page + i].pixel_data,&icon_pixel_datas[ICON_DIR_UNSELECTED]);
+            }
+            /* 填充文字 */
+            get_string_bitamp_from_buf(cur_dir_contents[start_file_index + i]->name,0,"utf-8",\
+            regions[base_region_index + i * 2 + 1].pixel_data,FONT_ALIGN_HORIZONTAL_CENTER,0xff00,font_size);
+        }else if(FILETYPE_REG == cur_dir_contents[start_file_index + i]->type){
+            /* 文件 */
+            file_type = cur_dir_contents[start_file_index + i]->file_type;
+            /* 填充图标，如果是图片则显示缩略图，目前支持bmp，jpeg，png，gif 4种格式 */
+            if(file_type >= FILETYPE_FILE_BMP && file_type < FILETYPE_FILE_GIF){
+                /* 构造文件名，为了预防文件名过长导致出错,虽然这发生的概率极小 */
+                if((strlen(cur_dir) + strlen(cur_dir_contents[start_file_index + i]->name) + 1) > 99){
+                    file_name = malloc(strlen(cur_dir) + strlen(cur_dir_contents[start_file_index + i]->name) + 2);
+                    if(!file_name){
+                        DP_ERR("%s:malloc failed!\n");
+                        return -ENOMEM;
+                    }
+                    sprintf(file_name,"%s/%s",cur_dir,cur_dir_contents[start_file_index + i]->name);
+                    file_name_malloc = 1;
+                }else{
+                    sprintf(file_full_path,"%s/%s",cur_dir,cur_dir_contents[start_file_index + i]->name);
+                }
+
+                memset(&temp_data,0,sizeof(struct pixel_data));
+
+                /* 获取图片数据 */
+                if(file_name_malloc){
+                    ret = get_pic_pixel_data(file_name,file_type,&temp_data);
+                }else{
+                    ret = get_pic_pixel_data(file_full_path,file_type,&temp_data);
+                } 
+                
+                if(0 == ret){
+                    /* 调整图片大小,同时复制到页面内存中 */
+                    // printf("file_type-%d\n",file_type);
+                    ret = resize_pic_pixel_data(regions[base_region_index + 2 * i].pixel_data,&temp_data);
+                    if(ret){
+                        DP_WARNING("%s:resize_pic_pixel_data failed!\n",__func__);
+                        /* 如果获取缩略图失败，则只显示图标 */
+                        merge_pixel_data(regions[base_region_index + 2 * i].pixel_data,&icon_pixel_datas[base_icon_index + file_type]);
+                    }
+                }else if(ret > 0){
+                    DP_WARNING("%s:get_pic_pixel_data failed!\n",__func__);
+                    merge_pixel_data(regions[base_region_index + 2 * i].pixel_data,&icon_pixel_datas[base_icon_index + file_type]);
+                }
+                
+                if(temp_data.buf){
+                    free(temp_data.buf);
+                }
+
+                if(file_name_malloc){
+                    free(file_name);
+                }
+            }else{
+                merge_pixel_data(regions[base_region_index + 2 * i].pixel_data,&icon_pixel_datas[base_icon_index + file_type]);
+            }
+            /* 填充文字 */
+            get_string_bitamp_from_buf(cur_dir_contents[start_file_index + i]->name,0,"utf-8",\
+            regions[base_region_index + i * 2 + 1].pixel_data,FONT_ALIGN_HORIZONTAL_CENTER,0xff00,font_size);
+        }    
+    }
+
+    /* 填充页面路径信息 */
+    ret = fill_file_path_area(regions[REGION_MAIN_FILE_PATH].pixel_data);
+    if(ret < 0){
+        DP_ERR("%d:fill_file_path_area failed!\n",__func__);
+        return ret;
+    }
+
+    /* 填充页码信息 */
+    ret = fill_pages_info_area(regions[REGION_MAIN_FILE_PAGES].pixel_data,start_file_index);
+    if(ret < 0){
+        DP_ERR("%d:fill_pages_info_area failed!\n",__func__);
+        return ret;
+    }
+
+    return 0;
+}
+
+/* 为本页面生成页面缓存，此函数依赖全局的目录信息，所以调用前应先获取，
+ * 其此函数会从第一页开始生成,且会释放原有缓存 */
+static int generate_page_caches(void)
+{
+    int i;
+    int ret;
+    int start_index;
+    int total_pages =  (cur_dirent_nums - 1) / files_per_page + 1;
+    struct page_region *regions = browse_page.page_layout.regions;
+    struct display_struct *display = get_default_display();
+
+    /* 为了配合实现缓存，使用该函数必须要求页面有自己单独的缓存 */
+    if(browse_page.share_fbmem){
+        DP_ERR("%s:invalied argument!\n",__func__);
         return -1;
     }
+
+    if(!dir_contents_generated){
+        DP_WARNING("%s dir contents has not generated!\n",__func__);
+        return -1;
+    }
+
+    /* 如果已有缓存，则先释放 */
+    for(i = 0 ; i < PAGE_CACHE_COUNT ; i++){
+        if(page_caches[i]){
+            if(page_caches[i]->buf){
+                free(page_caches[i]->buf);
+            }
+            free(page_caches[i]);
+            page_caches[i] = NULL;
+        }
+    }
+
+    /* 开始干活,先生成当前页的内容 */
+    /* 因为填充内容需要知道各区域的分布情况，所以需要现在页面内存上填充内容，再复制到缓存中 */
+    ret = fill_main_area(start_file_index);
+    if(ret){
+        DP_ERR("%s:generate_one_page_cache failed!\n",__func__);
+        return ret;
+    }
+    flush_page_region(&regions[REGION_MAIN],display);
+
+    /* 保存缓存 */
+    /* 分配内存 */
+    if(NULL == (*cur_page_cache = malloc(sizeof(struct pixel_data)))){
+        DP_ERR("%s:malloc failed!\n",__func__);
+        return -ENOMEM;
+    }
+    **cur_page_cache = *regions[REGION_MAIN].pixel_data;
+    (*cur_page_cache)->in_rows = 0;
+    (*cur_page_cache)->rows_buf = 0;
+    if(NULL == ((*cur_page_cache)->buf = malloc((*cur_page_cache)->total_bytes))){
+        DP_ERR("%s:malloc failed!\n",__func__);
+        return -ENOMEM;
+    }
+    copy_pixel_data(*cur_page_cache,regions[REGION_MAIN].pixel_data);
+
+    /* 生成其他两页的内容 */
+    /* 后面一页,此时 start_file_index 应为 0 */
+    start_index = start_file_index + files_per_page;
+    if(start_index < cur_dirent_nums){printf("%s-%d\n",__func__,__LINE__);
+        /* 在页面内存上生成下一页的内容，注意，此时生成的内容不能显示到屏幕上 */
+        ret = fill_main_area(start_index);
+        if(ret){
+            DP_ERR("%s:generate_one_page_cache failed!\n",__func__);
+            return ret;
+        }
+        if(NULL == (page_caches[2] = malloc(sizeof(struct pixel_data)))){
+            DP_ERR("%s:malloc failed!\n",__func__);
+            return -ENOMEM;
+        }
+        *page_caches[2] = *regions[REGION_MAIN].pixel_data;
+        page_caches[2]->in_rows = 0;
+        page_caches[2]->rows_buf = 0;
+        if(NULL == (page_caches[2]->buf = malloc(page_caches[2]->total_bytes))){
+            DP_ERR("%s:malloc failed!\n",__func__);
+            return -ENOMEM;
+        }
+        copy_pixel_data(page_caches[2],regions[REGION_MAIN].pixel_data);
+    }
+
+    /* 前面一页 */
+    if(total_pages > 2){
+        start_index = (total_pages - 1) * files_per_page;
+        printf("%s-%d\n",__func__,__LINE__);
+        /* 在页面内存上生成下一页的内容，注意，此时生成的内容不能显示到屏幕上 */
+        ret = fill_main_area(start_index);
+        if(ret){
+            DP_ERR("%s:generate_one_page_cache failed!\n",__func__);
+            return ret;
+        }
+        if(NULL == (page_caches[0] = malloc(sizeof(struct pixel_data)))){
+            DP_ERR("%s:malloc failed!\n",__func__);
+            return -ENOMEM;
+        }
+        *page_caches[0] = *regions[REGION_MAIN].pixel_data;
+        page_caches[0]->in_rows = 0;
+        page_caches[0]->rows_buf = 0;
+        if(NULL == (page_caches[0]->buf = malloc(page_caches[0]->total_bytes))){
+            DP_ERR("%s:malloc failed!\n",__func__);
+            return -ENOMEM;
+        }
+        copy_pixel_data(page_caches[0],regions[REGION_MAIN].pixel_data);
+    }
+
+    /* 恢复当前页面缓存 */
+    copy_pixel_data(regions[REGION_MAIN].pixel_data,*cur_page_cache);
+
     return 0;
 }
 
@@ -857,15 +1148,54 @@ static int goback_menu_cb_func(void)
 
     /* 重新填充文件显示区域 */
     clear_pixel_data(regions[REGION_MAIN_FILE_DIR].pixel_data,BACKGROUND_COLOR);
-    ret = fill_file_dir_area(&browse_page);
-    if(ret){
-        DP_ERR("%s:fill_file_dir_area failed!\n",__func__);
-        return ret;
-    }
+    // ret = fill_file_dir_area(&browse_page);
+    // if(ret){
+    //     DP_ERR("%s:fill_file_dir_area failed!\n",__func__);
+    //     return ret;
+    // }
 
     /* 将更改后的内容刷新至显存 */
     flush_file_dir_area(&browse_page);
     return 0;
+}
+
+/* 使能文件夹选择状态 */
+static void enable_dir_select_status(struct page_struct *browse_page,bool enable)
+{
+    struct page_region *regions = browse_page->page_layout.regions;
+    struct display_struct *display = get_default_display();
+    int dir_select_region_base;
+    int file_count;
+    int i;
+
+    if(!browse_page->already_layout){
+        return ;
+    }
+
+    if((file_count = cur_dirent_nums - start_file_index) >= files_per_page){
+        file_count = files_per_page;
+    }
+
+    dir_select_region_base = REGION_FILE_DIR_BASE + files_per_page * 3;
+    if(enable){
+        dir_select_status = 1;
+        for(i = 0 ; i < file_count ; i++){
+            if(cur_dir_contents[start_file_index + i]->type == FILETYPE_DIR){
+               regions[dir_select_region_base + i].invisible = 0;
+                merge_pixel_data_in_center(regions[dir_select_region_base + i].pixel_data,&icon_pixel_datas[ICON_DIR_UNSELECTED]); 
+            }
+        }
+    }else{
+        dir_select_status = 0;
+        for(i = 0 ; i < files_per_page ; i++){
+            regions[dir_select_region_base + i].invisible = 1;
+        }
+        copy_pixel_data(regions[REGION_MAIN].pixel_data,*cur_page_cache);
+    }
+
+    flush_page_region(&regions[REGION_MAIN],display);
+    fill_menu_icon_area(browse_page);
+    flush_menu_icon_area(browse_page);
 }
 
 /* 点击选择连播文件夹菜单时的回调函数 */
@@ -992,58 +1322,118 @@ static int select_dir_cb_func(int region_index)
     return 0;
 }
 
+/* @description : 实现上一页 、下一页菜单回调函数功能
+ * @param : next_page - 1 表示下一页，0 表示上一页 */
+static int __pre_next_page(int next_page)
+{
+    int ret,i,start_index;
+    int total_page = (cur_dirent_nums - 1) / files_per_page + 1;
+    struct page_region *regions = browse_page.page_layout.regions;
+    struct display_struct *display = get_default_display();
+    struct pixel_data *temp;
+    
+    /* 确定新的起始文件索引 */
+    if(next_page){
+        if((start_file_index + files_per_page) >= cur_dirent_nums){
+            start_file_index = 0;
+        }else{
+            start_file_index += files_per_page;
+        }
+    }else{
+        if(0 == start_file_index){       //当前显示的第一个文件,没有前一页了,跳到最后一页
+            start_file_index = ((cur_dirent_nums - 1) / files_per_page) * files_per_page;
+        }else if((start_file_index -= files_per_page) < 0){
+            start_file_index = 0;
+        }
+    }
+    
+    if(total_page <= PAGE_CACHE_COUNT){
+        /* 总页数小于等于3页时无需释放或读入新的缓存，只需将相应页面的缓存刷新到屏幕上就可以了 */
+        do{
+            if(next_page){
+                temp = page_caches[0];
+                for(i = 0 ; i < PAGE_CACHE_COUNT - 1 ; i++){
+                    page_caches[i] = page_caches[i + 1];
+                }
+                page_caches[PAGE_CACHE_COUNT - 1] = temp;
+            }else{
+                temp = page_caches[PAGE_CACHE_COUNT - 1];
+                for(i = PAGE_CACHE_COUNT - 1 ; i > 0 ; i--){
+                    page_caches[i] = page_caches[i - 1];
+                }
+                page_caches[0] = temp;
+            }
+        }while(!(*cur_page_cache));
+
+        /* 将更改后的内容刷新至显存 */
+        copy_pixel_data(regions[REGION_MAIN].pixel_data,*cur_page_cache);
+        flush_page_region(&regions[REGION_MAIN],display);
+    }else{
+        if(next_page){
+            temp = page_caches[0];
+            for(i = 0 ; i < PAGE_CACHE_COUNT - 1 ; i++){
+                page_caches[i] = page_caches[i + 1];
+            }
+            page_caches[i] = NULL;
+        }else{
+            temp = page_caches[PAGE_CACHE_COUNT - 1];
+            for(i = PAGE_CACHE_COUNT - 1 ; i > 0 ; i--){
+                page_caches[i] = page_caches[i - 1];
+            }
+            page_caches[i] = NULL;
+        }
+        
+        
+        printf("%s-%d\n",__func__,__LINE__);
+        /* 将更改后的内容刷新至显存 */
+        copy_pixel_data(regions[REGION_MAIN].pixel_data,*cur_page_cache);
+        flush_page_region(&regions[REGION_MAIN],display);
+
+        /* 读取最新一页的缓存 */
+        if(next_page){
+            if((start_file_index + files_per_page) >= cur_dirent_nums){
+                start_index = 0;
+            }else{
+                start_index = start_file_index + files_per_page;
+            }
+        }else{
+            if(0 == start_file_index){       //当前显示的第一个文件,没有前一页了,跳到最后一页
+                start_index = ((cur_dirent_nums - 1) / files_per_page) * files_per_page;
+            }else if((start_file_index -= files_per_page) < 0){
+                start_index = 0;
+            }
+        }
+
+        ret = fill_main_area(start_index);
+        if(ret){
+            DP_ERR("%s:fill_main_area failed!\n",__func__);
+            return ret;
+        }
+
+        /* 复用第一个缓存 */
+        copy_pixel_data(temp,regions[REGION_MAIN].pixel_data);
+        copy_pixel_data(regions[REGION_MAIN].pixel_data,*cur_page_cache);
+        
+        if(next_page){
+            page_caches[PAGE_CACHE_COUNT - 1] = temp;
+        }else{
+            page_caches[0] = temp;
+        }
+        
+    }
+    return 0;
+}
+
 /* 点击上一页菜单时的回调函数 */
 static int prepage_menu_cb_func(void)
 {
-    int ret;
-    struct page_region *regions = browse_page.page_layout.regions;
-    struct display_struct *display = get_default_display();
-
-    /* 确定新的起始文件索引 */
-    if(0 == start_file_index){       //当前显示的第一个文件,没有前一页了
-        return 0;
-    }else if((start_file_index -= files_per_page) < 0){
-        start_file_index = 0;
-    }
-    
-    /* 重新填充区域 */
-    clear_pixel_data(regions[REGION_MAIN_FILE_DIR].pixel_data,BACKGROUND_COLOR);
-    fill_file_dir_area(&browse_page);
-    if(ret){
-        DP_ERR("%s:fill_file_dir_area failed!\n",__func__);
-        return ret;
-    }
-
-    /* 将更改后的内容刷新至显存 */
-    flush_file_dir_area(&browse_page);
-    return 0;
+   return __pre_next_page(0);
 }
 
 /* 点击下一页菜单时的回调函数 */
 static int nextpage_menu_cb_func(void)
 {
-    int ret;
-    struct page_region *regions = browse_page.page_layout.regions;
-    struct display_struct *display = get_default_display();
-
-    /* 确定新的起始文件索引 */
-    if((start_file_index + files_per_page) >= cur_dirent_nums){
-        return 0;
-    }else{
-        start_file_index += files_per_page;
-    }
-
-    /* 重新填充区域 */
-    clear_pixel_data(regions[REGION_MAIN_FILE_DIR].pixel_data,BACKGROUND_COLOR);
-    fill_file_dir_area(&browse_page);
-    if(ret){
-        DP_ERR("%s:fill_file_dir_area failed!\n",__func__);
-        return ret;
-    }
-
-    /* 将更改后的内容刷新至显存 */
-    flush_file_dir_area(&browse_page);
-    return 0;
+    return __pre_next_page(1);
 }
 
 /* 点击文件目录区域时的回调函数 */
@@ -1089,37 +1479,27 @@ static int file_dir_area_cb_func(int region_index,void *data)
         start_file_index = 0;
         dir_contents_generated = 1;
         /* 重新填充文件显示区域,将文件显示区域清为白色 */
-        clear_pixel_data(regions[REGION_MAIN_FILE_DIR].pixel_data,BACKGROUND_COLOR); 
-        /* 填充各区域 */
-        ret = fill_file_dir_area(&browse_page);
+       ret = generate_page_caches();
         if(ret){
-            DP_ERR("%s:fill_file_dir_area failed!\n",__func__);
+            DP_ERR("%s:generate_page_caches failed!\n",__func__);
             return -1;
         }
-        default_display->flush_buf(default_display,browse_page.page_mem.buf,browse_page.page_mem.total_bytes);
+        flush_page_region(&regions[REGION_MAIN],default_display);
     }else if(FILETYPE_REG == cur_dir_contents[selected_file_index]->type){
         /* 打开文件 */
-        /* 既然能识别出该文件,那么就得能打开该文件,否则还是识别为未知文件为好 */
-        /* 先构造出文件的绝对路径名,然后把后面的事交给专门的处理页面吧 */
-        file_name = malloc(strlen(cur_dir) + 2 + strlen(cur_dir_contents[selected_file_index]->name));
-        if(!file_name){
-            DP_ERR("%s:malloc failed\n",__func__);
-            return -ENOMEM;
-        }
-        if(!strcmp(cur_dir,"/")){
-            sprintf(file_name,"/%s",cur_dir_contents[selected_file_index]->name);
-        }else{
-            sprintf(file_name,"%s/%s",cur_dir,cur_dir_contents[selected_file_index]->name);
-        }
-        /* 构造页面之间传递的参数 */
-        page_param.id = browse_page.id;
-        page_param.private_data = file_name;
         switch (cur_dir_contents[selected_file_index]->file_type){
             /* 目前只支持两大类文件:图片和文本 */
             case FILETYPE_FILE_BMP:
             case FILETYPE_FILE_JPEG:
             case FILETYPE_FILE_PNG:
             case FILETYPE_FILE_GIF:
+                /* 构造页面之间传递的参数，将目录信息传递过去，以免重新获取 */
+                page_param.id = browse_page.id;
+                page_param.private_data = malloc(sizeof(unsigned long) * 4);
+                ((unsigned long *)page_param.private_data)[0] = (unsigned long)cur_dir_contents;
+                ((unsigned long *)page_param.private_data)[1] = (unsigned long)cur_dirent_nums;
+                ((unsigned long *)page_param.private_data)[2] = (unsigned long)selected_file_index;
+                ((unsigned long *)page_param.private_data)[3] = (unsigned long)cur_dir;
                 /* 获取page_struct */
                 next_page = get_page_by_name("view_pic_page");
                 if(!next_page){
@@ -1128,6 +1508,22 @@ static int file_dir_area_cb_func(int region_index,void *data)
                 }
                 break;
             case FILETYPE_FILE_TXT:
+                /* 构造文本文件名 */
+                file_name = malloc(strlen(cur_dir) + 2 + strlen(cur_dir_contents[selected_file_index]->name));
+                if(!file_name){
+                    DP_ERR("%s:malloc failed\n",__func__);
+                    return -ENOMEM;
+                }
+                if(!strcmp(cur_dir,"/")){
+                    sprintf(file_name,"/%s",cur_dir_contents[selected_file_index]->name);
+                }else{
+                    sprintf(file_name,"%s/%s",cur_dir,cur_dir_contents[selected_file_index]->name);
+                }
+
+                /* 构造页面之间传递的参数 */
+                page_param.id = browse_page.id;
+                page_param.private_data = file_name;
+
                 /* 获取page_struct */
                 next_page = get_page_by_name("text_page");
                 if(!next_page){
@@ -1158,7 +1554,7 @@ static int browse_page_run(struct page_param *pre_param)
     unsigned int dir_select_region_base = REGION_FILE_DIR_BASE + 3 * files_per_page;
     unsigned int pre_page_id = pre_param->id;
     struct display_struct *default_display = get_default_display();
-    struct page_region *regions;
+    struct page_region *regions = browse_page.page_layout.regions;
     struct page_struct *next_page;
     struct page_param page_param;
     DP_ERR("enter:%s\n",__func__);
@@ -1170,9 +1566,13 @@ static int browse_page_run(struct page_param *pre_param)
         browse_page.page_mem.height      = default_display->yres;
         browse_page.page_mem.line_bytes  = browse_page.page_mem.width * browse_page.page_mem.bpp / 8;
         browse_page.page_mem.total_bytes = browse_page.page_mem.line_bytes * browse_page.page_mem.height; 
-        browse_page.page_mem.buf         = default_display->buf;
+        browse_page.page_mem.buf         = malloc(browse_page.page_mem.total_bytes);
+        if(!browse_page.page_mem.buf){
+            DP_ERR("%s:malloc failed!\n",__func__);
+            return -ENOMEM;
+        }
         browse_page.allocated            = 1;
-        browse_page.share_fbmem          = 1;
+       
     }
     /* 注意，页面布局在注册该页面时，在初始化函数中已经计算好了 */
     
@@ -1195,13 +1595,14 @@ static int browse_page_run(struct page_param *pre_param)
         if(cur_dir){
             free(cur_dir);
         }
-        cur_dir = malloc(strlen(DEFAULT_DIR) + 1);
+        cur_dir = malloc(strlen(root_dir) + 1);
         if(!cur_dir){
             DP_ERR("%s:malloc failed!\n",__func__);
             return -ENOMEM;
         } 
-        strcpy(cur_dir,DEFAULT_DIR);
+        strcpy(cur_dir,root_dir);
     }
+    /* 注意，此函数不会获取文件类型 */
     ret = get_dir_contents(cur_dir,&cur_dir_contents,&cur_dirent_nums);
     if(ret){
         DP_ERR("%s:get_dir_contents failed!\n",__func__);
@@ -1214,6 +1615,18 @@ static int browse_page_run(struct page_param *pre_param)
         enable_dir_select_status(&browse_page,1);
     }
     
+    /* 准备各种图标数据 */
+    if(!browse_page.icon_prepared){
+        prepare_icon_pixel_datas(&browse_page,icon_pixel_datas,icon_file_names,icon_region_links,ICON_NUMS);
+        if(ret){
+            DP_ERR("%s:prepare_icon_pixel_data failed!\n",__func__);
+            return -1;
+        }
+    }
+
+    /* 获取页面缓存 */
+    generate_page_caches();
+
     /* 填充各区域 */
     ret = browse_page_fill_layout(&browse_page);
     if(ret){
@@ -1223,8 +1636,6 @@ static int browse_page_run(struct page_param *pre_param)
 
     default_display = get_default_display();
     default_display->flush_buf(default_display,browse_page.page_mem.buf,browse_page.page_mem.total_bytes);
-    
-    regions = browse_page.page_layout.regions;
 
     /* 检测输入事件的循环 */
     while(1){
@@ -1238,10 +1649,10 @@ static int browse_page_run(struct page_param *pre_param)
             continue;
         }
         //只处理特定区域内的事件
-        if(region_index < 0 || REGION_MAIN_FILE_PATH == region_index || 
+        if(region_index < 0 || REGION_MAIN_FILE_PATH == region_index || REGION_MAIN == region_index ||
            REGION_MAIN_FILE_PAGES == region_index || REGION_MAIN_FILE_DIR == region_index){
             if(!event.presssure && (-1 != pre_region_index)){
-                invert_region(regions[pre_region_index].pixel_data);
+                press_region(&regions[pre_region_index],0,0);
                 flush_page_region(&regions[pre_region_index],default_display);
             }
             pre_region_index = -1;
@@ -1254,9 +1665,14 @@ static int browse_page_run(struct page_param *pre_param)
             if(!pressure && -1 == pre_region_index){     //还未曾有按钮按下   
                 pre_region_index = region_index;
                 pressure = 1;
-                /* 反转按下区域的颜色 */
+                if((cur_dirent_nums - start_file_index) < files_per_page){
+                    if((region_index - REGION_FILE_DIR_BASE + 2 * files_per_page) > (cur_dirent_nums - start_file_index))
+                        continue;
+                }
+                
+                /* 反转按下区域的颜色 */ 
                 if(region_index < dir_select_region_base){
-                    invert_region(regions[region_index].pixel_data);
+                    press_region(&regions[region_index],1,0);
                     flush_page_region(&regions[region_index],default_display); 
                 }     
             }
@@ -1298,7 +1714,7 @@ static int browse_page_run(struct page_param *pre_param)
                         if(dir_select_status){
                             ret = start_autoplay_menu_cb_func(pre_page_id);
                             /* ret 为0不用跳转；为1要跳转，且前一个页面是主页面，直接调用run函数；
-                             * 为1要跳转，且前一个页面正是 连播页面 ，直接返回； */
+                             * 为1要跳转，且前一个页面正是连播页面 ，直接返回； */
                             if(ret == 1){
                                 next_page = get_page_by_name("autoplay_page");
                                 page_param.id = browse_page.id;
@@ -1344,7 +1760,6 @@ static int browse_page_run(struct page_param *pre_param)
     }   
     return 0;
 }
-
 
 static struct page_struct browse_page = {
     .name = "browse_page",

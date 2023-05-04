@@ -44,7 +44,7 @@ static const char *icon_file_names[] = {
 };
 
 /* 图标对应的区域，数组下标表示图标编号，下标对应的数组项表示该图标对应的区域,用于缩放图标 */
-static const int icon_region_links[] = {
+static const unsigned int icon_region_links[] = {
     [ICON_INCREASE]         = REGION_INCREASE,
     [ICON_TIME_BACKGROUND]  = REGION_TIME,
     [ICON_DECREASE]         = REGION_DECREASE,

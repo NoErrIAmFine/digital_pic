@@ -127,7 +127,11 @@ static int is_support_jpeg(const char *file_name)
 	jpeg_stdio_src(&tDInfo, fp);
 
     iRet = jpeg_read_header(&tDInfo, TRUE);
+
 	jpeg_abort_decompress(&tDInfo);
+
+    /* 释放资源 */
+    jpeg_destroy_decompress(&tDInfo);
     fclose(fp);
     return (iRet == JPEG_HEADER_OK);
 }

@@ -65,7 +65,7 @@ static const char *icon_file_names[ICON_NUMS] = {
 };
  
 /* 图标对应的区域，数组下标表示图标编号，下标对应的数组项表示该图标对应的区域，用于图标缩放 */
-static const int icon_region_links[] = {
+static const unsigned int icon_region_links[] = {
     [ICON_MENU_HOME]         = REGION_MENU_HOME,
     [ICON_MENU_GOBACK]       = REGION_MENU_GOBACK,
     [ICON_MENU_PRE_PIC]      = REGION_MENU_PRE_PIC,

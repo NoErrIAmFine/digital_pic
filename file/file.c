@@ -117,6 +117,7 @@ int get_dir_contents(const char *dir_name,struct dir_entry ***dir_contents,unsig
                 DP_ERR("%s:malloc failed!\n",__func__);
                 return -ENOMEM;
             }
+            memset(my_dir_entrys[my_dir_index],0,sizeof(struct dir_entry));
             /* 将信息复制到自己的数组中去 */
             strncpy(my_dir_entrys[my_dir_index]->name,orig_dirents[i]->d_name,256);
             my_dir_entrys[my_dir_index]->name[255] = '\0';
@@ -138,14 +139,13 @@ int get_dir_contents(const char *dir_name,struct dir_entry ***dir_contents,unsig
             my_dir_entrys[my_dir_index] = malloc(sizeof(struct dir_entry));
             if(!my_dir_entrys[my_dir_index]){
                 DP_ERR("%s:malloc failed!\n",__func__);
-                return -ENOMEM;;
+                return -ENOMEM;
             }
+            memset(my_dir_entrys[my_dir_index],0,sizeof(struct dir_entry));
             /* 将信息复制到自己的数组中去 */
             strncpy(my_dir_entrys[my_dir_index]->name,orig_dirents[i]->d_name,256);
             my_dir_entrys[my_dir_index]->name[255] = '\0';
             my_dir_entrys[my_dir_index]->type = FILETYPE_REG;
-            /* 同时检测出文件类型,在这里检测完后,后面在浏览文件时就不用每次都检测了 */
-            my_dir_entrys[my_dir_index]->file_type = get_file_type(dir_name,my_dir_entrys[my_dir_index]->name);
             my_dir_index++;
 
             /* 释放scandir函数分配的内存 */

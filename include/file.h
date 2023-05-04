@@ -10,7 +10,7 @@ enum file_type
 /* 这里是所能识别的几种文件类型 */
 enum filetype_file
 {
-    FILETYPE_FILE_BMP = 1,      //这里为什么要搞成1,为了方便组织图标数据数组
+    FILETYPE_FILE_BMP = 1,      //这里为什么要搞成1,为了方便组织图标数据数组,且用0表示未获取文件类型
     FILETYPE_FILE_JPEG,
     FILETYPE_FILE_PNG,
     FILETYPE_FILE_GIF,

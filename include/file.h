@@ -25,6 +25,7 @@ struct dir_entry
     char name[256];
     char type;
     char file_type;
+    unsigned int preview_cached:1;   /* 表示预览图是已被存入到缓存中 */
 };
 
 int is_reg_file(const char *path,const char *name);
@@ -35,5 +36,7 @@ int get_dir_contents(const char *,struct dir_entry ***,unsigned int*);
 int get_pic_dir_contents(const char *file_full_name,struct dir_entry ***pic_contents,unsigned int *pic_nums,int *cur_pic_index,char **cur_dir);
 void free_dir_contents(struct dir_entry **dir_contents,unsigned int dirent_nums);
 int get_file_type(const char *path,const char *name);
+char *get_file_name(const char *file_full_name);
+char *get_dir_name(const char *file_full_name);
 
 #endif

@@ -330,7 +330,6 @@ static int reset_pic_cache_size(struct pic_cache *pic_cache,bool save_orig)
 static int get_pic_cache_data(int pic_index,struct pic_cache **pic_cache,bool save_orig)
 {
     int ret;
-    // int err = 0;
     int is_gif = 0;
     char *pic_file;
     struct pixel_data *pixel_data;
@@ -343,7 +342,7 @@ static int get_pic_cache_data(int pic_index,struct pic_cache **pic_cache,bool sa
         return -ENOMEM;
     }
     sprintf(pic_file,"%s/%s",cur_dir,cur_dir_pic_contents[pic_index]->name);
-    
+    printf("%s-%d-pic_file:%s\n",__func__,__LINE__,pic_file);
     /* 分配一个struct pic_cache */
     temp_cache = malloc(sizeof(struct pic_cache));
     if(!temp_cache){
@@ -354,16 +353,12 @@ static int get_pic_cache_data(int pic_index,struct pic_cache **pic_cache,bool sa
 
     pixel_data = &temp_cache->orig_data;
     
+    if(!cur_dir_pic_contents[pic_index]->file_type)
+        cur_dir_pic_contents[pic_index]->file_type = get_file_type(cur_dir,cur_dir_pic_contents[pic_index]->name);
+
     ret = get_pic_pixel_data(pic_file,cur_dir_pic_contents[pic_index]->file_type,pixel_data);
-    if(ret){
+    if(ret > 0){
         DP_WARNING("%s:get_pic_pixel_data failed!\n",__func__);
-        /* 如果图片获取失败，则显示一张表示错误的图片 */
-        *pixel_data = icon_pixel_datas[ICON_LOAD_ERR];
-        if(NULL == (pixel_data = malloc(pixel_data->total_bytes))){
-            DP_ERR("%s:malloc failed!\n",__func__);
-            return -ENOMEM;
-        }
-        memcpy(pixel_data->buf,icon_pixel_datas[ICON_LOAD_ERR].buf,pixel_data->total_bytes);
     }
     free(pic_file);
     /* 判断是否为gif图片 */
@@ -449,7 +444,7 @@ static int generate_pic_caches(void)
         pre_index = cur_dir_pic_nums - 1;
     }
     if(pre_index != cur_pic_index && pre_index != next_index && cur_dir_pic_contents[pre_index]){
-        ret = get_pic_cache_data(pre_index,&pic_caches[1],0);
+        ret = get_pic_cache_data(pre_index,&pic_caches[0],0);
         if(ret < 0){
             DP_ERR("%s:get_pic_cache_data failed!\n",__func__);
             return -1;
@@ -466,7 +461,7 @@ static int generate_pic_caches(void)
 static void destroy_pic_caches(void)
 {
     int i;
-
+    pthread_mutex_lock(&view_pic_priv.gif_mutex);
     if(pic_caches_generated){
         for(i = 0 ; i < 3 ; i++){
             if(pic_caches[i]){
@@ -480,6 +475,7 @@ static void destroy_pic_caches(void)
         }
         pic_caches_generated = 0;
     }
+    pthread_mutex_unlock(&view_pic_priv.gif_mutex);
 }
 
 /* 退出函数 */
@@ -504,12 +500,20 @@ static void view_pic_page_exit(void)
 
     /* 释放目录信息 */
     free_dir_contents(cur_dir_pic_contents,cur_dir_pic_nums);
+    if(!is_from_browse){
+        free_dir_contents(cur_dir_contents,cur_dir_nums);
+    }
     free(cur_dir);
     cur_dir = NULL;
     cur_dir_pic_contents = NULL;
     cur_dir_pic_nums = 0;
     cur_pic_index = 0;
     cur_gif_file = NULL;
+    cur_dir_contents = NULL;
+    cur_dir_nums = 0;
+    cur_file_index = 0;
+    initial_file_index = 0;
+    pic_dir_generated = 0;
 }
 
 static int fill_menu_icon_area(struct page_struct *view_pic_page)
@@ -564,7 +568,7 @@ static int fill_main_pic_area(struct page_struct *page)
     int i,j,ret;
     struct display_struct *default_display = get_default_display();
     struct page_region *main_pic_region = &page->page_layout.regions[REGION_MAIN_PIC];
-    struct pic_cache *cur_pic = *cur_pic_data;
+    struct pic_cache *cur_pic = *(cur_pic_data);
     struct pixel_data *src_data,*dst_data;
     unsigned char *dst_line_buf,*src_line_buf;
     unsigned char src_red,src_green,src_blue,alpha;
@@ -585,12 +589,11 @@ static int fill_main_pic_area(struct page_struct *page)
 
     //如果一些条件不满足，快退出把，不要浪费时间了
     if(!page->region_mapped || !src_data->buf || dst_data->bpp != 16 || \
-    (src_data->bpp != 16 && src_data->bpp != 24 && src_data->bpp != 32)){   
-          
+    (src_data->bpp != 16 && src_data->bpp != 24 && src_data->bpp != 32)){    
         printf("src_data->buf-%p\n",src_data->buf); 
         return -1;
     }
-
+    
     /* 先清理该区域 */
     clear_pixel_data(dst_data,BACKGROUND_COLOR);
 
@@ -837,10 +840,6 @@ static int __pre_next_pic(int next_pic)
             pre_index = cur_dir_pic_nums - 1;
         }
     }
-
-    /* 当前目录只有一个图片 */
-    if(next_index == cur_pic_index)
-        return 0;
     
     /* 更新索引 */
     if(next_pic){
@@ -848,7 +847,7 @@ static int __pre_next_pic(int next_pic)
     }else{
         cur_pic_index = pre_index;
     }
-
+    
     /* 先判断要显示的下一张图是否为gif */
     if(cur_dir_pic_contents[cur_pic_index]->file_type == FILETYPE_FILE_GIF){
         is_gif = 1;
@@ -962,7 +961,7 @@ retry1:
             }   
         }
     }
-   
+    
     /* 以某种方法启动新线程显示动图，此处原始数据指向线程池数据结构 */
     if(is_gif){
         thread_pool = (struct gif_thread_pool *)pic_caches[1]->gif_thread_pool;
@@ -971,7 +970,9 @@ retry3:
         if(thread_pool->idle_thread){
             for(i = 0 ; i < THREAD_NUMS ; i++){
                 if(!thread_pool->thread_datas[i].submitted){
-                    thread_pool->thread_datas[i].file_name = cur_gif_file;
+                    // thread_pool->thread_datas[i].file_name = cur_gif_file;
+                    thread_pool->thread_datas[i].file_name = malloc(strlen(cur_gif_file));
+                    strcpy(thread_pool->thread_datas[i].file_name,cur_gif_file);
                     thread_pool->thread_datas[i].submitted = 1;
                     break;
                 }
@@ -988,7 +989,7 @@ retry3:
             goto retry3;
         }
     }
-
+    
     if(next_pic){
         ret = reset_pic_cache_size(pic_caches[0],0);
     }else{
@@ -998,7 +999,7 @@ retry3:
         DP_ERR("%s:reset_pic_size failed!\n",__func__);
         return -1;
     }
-            
+     
     /* 获取要预读的下一张图片的索引 */
     i = cur_pic_index;
     if(next_pic){
@@ -1040,7 +1041,7 @@ retry3:
         }
         pre_index = i;
     }
-
+    
     /* 释放上一张的缓存 */
     if(next_index == pre_index){
         /* 只有三张图，无需读入新的缓存，轮换缓存指针即可 */
@@ -1067,7 +1068,7 @@ retry3:
         DP_ERR("%s:get_pic_cache_data failed!\n",__func__);
         return -ENOMEM;
     }
-
+    
 exit:
     /* 如果所有的图片目录信息都已经生成了，重新构建全局图片目录, */
     if(!pic_dir_completed){
@@ -1391,13 +1392,12 @@ static int view_pic_page_run(struct page_param *pre_page_param)
     short x_offset,y_offset;
     unsigned short distance;
     struct display_struct *default_display = get_default_display();
-    struct page_region *regions;
+    struct page_region *regions = view_pic_page.page_layout.regions;
     struct page_struct *temp_page;
     unsigned int pre_page_id = pre_page_param->id;
     DP_ERR("enter:%s\n",__func__);
     /* 为该页面分配一块内存 */
     if(!view_pic_page.allocated){
-        DP_ERR("view_pic_page.page_mem.total_bytes:%d\n",view_pic_page.page_mem.total_bytes);
         /* 页面内存可以与显存使用同一块内存，但这样在显示gif图片时会有点问题 */
         view_pic_page.page_mem.bpp         = default_display->bpp;
         view_pic_page.page_mem.width       = default_display->xres;
@@ -1431,68 +1431,80 @@ static int view_pic_page_run(struct page_param *pre_page_param)
             cur_dir_contents = (struct dir_entry **)(((unsigned long *)pre_page_param->private_data)[0]);
             cur_dir_nums    = (unsigned int)(((unsigned long *)pre_page_param->private_data)[1]);
             cur_file_index  = (int)(((unsigned long *)pre_page_param->private_data)[2]);
-            cur_dir = (char *)(((unsigned long *)pre_page_param->private_data)[3]);
-            printf("%s-%d\n",__func__,__LINE__);
-            if(NULL == (cur_dir_pic_contents = malloc(sizeof(struct dir_entry *) * cur_dir_nums))){
-                DP_ERR("%s:malloc failed!\n",__func__);
-                return -ENOMEM;
-            }
-            memset(cur_dir_pic_contents,0,sizeof(struct dir_entry *) * cur_dir_nums);
-            cur_pic_index = cur_file_index;
-            cur_dir_pic_nums = cur_dir_nums;
-            if(NULL == (cur_dir_pic_contents[cur_pic_index] = malloc(sizeof(struct dir_entry)))){
-                DP_ERR("%s:malloc failed!\n",__func__);
-                return -ENOMEM;
-            }
-            memcpy(cur_dir_pic_contents[cur_pic_index],cur_dir_contents[cur_file_index],sizeof(struct dir_entry));
-            printf("%s-%d\n",__func__,__LINE__);
-            /* 至少要算出当前查看的文件前后两个图片文件，如果有的话 */
-            i = cur_file_index;
-            while(++i != cur_file_index){
-                if(i == cur_dir_nums && ((i = 0) == cur_file_index))
-                    break;
-
-                if(!cur_dir_contents[i]->file_type){
-                    cur_dir_contents[i]->file_type = get_file_type(cur_dir,cur_dir_contents[i]->name);
-                }
-                if(cur_dir_contents[i]->file_type >= FILETYPE_FILE_BMP && cur_dir_contents[i]->file_type <= FILETYPE_FILE_GIF){
-                    if(NULL == (cur_dir_pic_contents[i] = malloc(sizeof(struct dir_entry)))){
-                        DP_ERR("%s:malloc failed!\n",__func__);
-                        return -ENOMEM;
-                    }
-                    memcpy(cur_dir_pic_contents[i],cur_dir_contents[i],sizeof(struct dir_entry));
-                    break;
-                }
-            }
-            
-            printf("%s-%d\n",__func__,__LINE__);
-            i = cur_file_index;
-            while(--i != cur_file_index){
-                if(i < 0 && ((i = cur_dir_nums - 1) == cur_file_index))
-                    break;
-
-                if(!cur_dir_contents[i]->file_type){
-                    cur_dir_contents[i]->file_type = get_file_type(cur_dir,cur_dir_contents[i]->name);
-                }
-                if(cur_dir_contents[i]->file_type >= FILETYPE_FILE_BMP && cur_dir_contents[i]->file_type <= FILETYPE_FILE_GIF){
-                    if(NULL == (cur_dir_pic_contents[i] = malloc(sizeof(struct dir_entry)))){
-                        DP_ERR("%s:malloc failed!\n",__func__);
-                        return -ENOMEM;
-                    }
-                    memcpy(cur_dir_pic_contents[i],cur_dir_contents[i],sizeof(struct dir_entry));
-                    break;
-                }
-            }printf("%s-%d\n",__func__,__LINE__);
+            cur_dir = malloc(strlen((char *)(((unsigned long *)pre_page_param->private_data)[3])));
+            strcpy(cur_dir,(char *)(((unsigned long *)pre_page_param->private_data)[3]));
         }else if(pre_page_id == calc_page_id("autoplay_page")){
-            ret = get_pic_dir_contents(pre_page_param->private_data,&cur_dir_pic_contents,&cur_dir_pic_nums,&cur_pic_index,&cur_dir);
+            is_from_browse = 0;
+            /* 根据传进来的文件名获取该文件所在目录下的图片信息，注意此时并不获取文件类型，因为如果现在获取的话，如果图片很多将很费时，在播放时动态获取 */
+            char *temp;
+            cur_dir = get_dir_name((char *)pre_page_param->private_data);
+            temp = get_file_name((char *)pre_page_param->private_data);
+            ret = get_dir_contents(cur_dir,&cur_dir_contents,&cur_dir_nums);
             if(ret < 0){
                 DP_ERR("%s:get_pic_dir_contents failed!\n",__func__);
                 return -1;
             }
+            for(i = 0 ; i < cur_dir_nums ; i++){
+                if(!strcmp(cur_dir_contents[i]->name,temp)){
+                    i = cur_file_index;
+                    break;
+                }
+            }
+            free(temp);
+        }
+
+        free(pre_page_param->private_data);
+        if(NULL == (cur_dir_pic_contents = malloc(sizeof(struct dir_entry *) * cur_dir_nums))){
+            DP_ERR("%s:malloc failed!\n",__func__);
+            return -ENOMEM;
+        }
+        memset(cur_dir_pic_contents,0,sizeof(struct dir_entry *) * cur_dir_nums);
+        cur_pic_index = cur_file_index;
+        cur_dir_pic_nums = cur_dir_nums;
+        if(NULL == (cur_dir_pic_contents[cur_pic_index] = malloc(sizeof(struct dir_entry)))){
+            DP_ERR("%s:malloc failed!\n",__func__);
+            return -ENOMEM;
+        }
+        memcpy(cur_dir_pic_contents[cur_pic_index],cur_dir_contents[cur_file_index],sizeof(struct dir_entry));
+        
+        /* 至少要算出当前查看的文件前后两个图片文件，如果有的话 */
+        i = cur_file_index;
+        while(++i != cur_file_index){
+            if(i == cur_dir_nums && ((i = 0) == cur_file_index))
+                break;
+            if(!cur_dir_contents[i]->file_type){
+                cur_dir_contents[i]->file_type = get_file_type(cur_dir,cur_dir_contents[i]->name);
+            }
+            if(cur_dir_contents[i]->file_type >= FILETYPE_FILE_BMP && cur_dir_contents[i]->file_type <= FILETYPE_FILE_GIF){
+                if(NULL == (cur_dir_pic_contents[i] = malloc(sizeof(struct dir_entry)))){
+                    DP_ERR("%s:malloc failed!\n",__func__);
+                    return -ENOMEM;
+                }
+                memcpy(cur_dir_pic_contents[i],cur_dir_contents[i],sizeof(struct dir_entry));
+                break;
+            }
+        }
+        
+        
+        i = cur_file_index;
+        while(--i != cur_file_index){
+            if(i < 0 && ((i = cur_dir_nums - 1) == cur_file_index))
+                break;
+            if(!cur_dir_contents[i]->file_type){
+                cur_dir_contents[i]->file_type = get_file_type(cur_dir,cur_dir_contents[i]->name);
+            }
+            if(cur_dir_contents[i]->file_type >= FILETYPE_FILE_BMP && cur_dir_contents[i]->file_type <= FILETYPE_FILE_GIF){
+                if(NULL == (cur_dir_pic_contents[i] = malloc(sizeof(struct dir_entry)))){
+                    DP_ERR("%s:malloc failed!\n",__func__);
+                    return -ENOMEM;
+                }
+                memcpy(cur_dir_pic_contents[i],cur_dir_contents[i],sizeof(struct dir_entry));
+                break;
+            }
         }
         pic_dir_generated = 1;
     }
-    printf("%s-%d\n",__func__,__LINE__);
+    
     /* 如果当前点击的是gif图片，将文件名保存起来，此操作很关键，因为就是通过判断此文件名是否为空来决定是否启动gif线程 */
     if(cur_dir_pic_contents[cur_pic_index]->file_type == FILETYPE_FILE_GIF){
         if(!(cur_gif_file = malloc(strlen(cur_dir) + 2 + strlen(cur_dir_pic_contents[cur_pic_index]->name)))){
@@ -1500,6 +1512,7 @@ static int view_pic_page_run(struct page_param *pre_page_param)
             return -ENOMEM;
         }
         sprintf(cur_gif_file,"%s/%s",cur_dir,cur_dir_pic_contents[cur_pic_index]->name);
+        printf("%s-%d-cur_gif_file:%s\n",__func__,__LINE__,cur_gif_file);
     }
     
     /* 准备主体的图像数据缓存，该函数使用全局变量 */
@@ -1518,8 +1531,6 @@ static int view_pic_page_run(struct page_param *pre_page_param)
 
     default_display = get_default_display();
     default_display->flush_buf(default_display,view_pic_page.page_mem.buf,view_pic_page.page_mem.total_bytes);
-    
-    regions = view_pic_page.page_layout.regions;
 
     /* 检测输入事件的循环 */
     while(1){

@@ -254,57 +254,6 @@ free_origin_dirents:
     return ret;
 }
 
-static int resize_pic_pixel_data1(struct pixel_data *data,int region_width,int region_height)
-{
-    int ret;
-    float scale;
-    unsigned int zoomed_width,zoomed_height;
-    unsigned int orig_width,orig_height;
-    struct pixel_data temp_data;
-
-    if(!data->buf){
-        return 0;              //没有原始图像数据，直接退出
-    }
-
-    orig_width = data->width;
-    orig_height = data->height;
-    scale = (float)orig_height / orig_width;
-    memset(&temp_data,0,sizeof(struct pixel_data));
-
-    /* 确定缩放后的图片大小 */
-    if(region_width >= orig_width && region_height >= orig_height){
-        /* 图片可完全显示，直接退出即可 */
-        return 0;
-    }else if(region_width < orig_width && region_height < orig_height){
-        /* 先将宽度缩至允许的最大值 */
-        zoomed_width = region_width;
-        zoomed_height = scale * zoomed_width;
-        if(zoomed_height > region_height){
-            /* 还要继续缩小 */
-            zoomed_height = region_height;
-            zoomed_width = zoomed_height / scale;
-        }
-    }else if(region_width < orig_width){
-        zoomed_width = region_width;
-        zoomed_height = zoomed_width * scale;
-    }else if(orig_height < orig_height){
-        zoomed_height = orig_height;
-        zoomed_width = zoomed_height / scale;
-    }
-
-    temp_data.width = zoomed_width;
-    temp_data.height = zoomed_height;
-
-    ret = pic_zoom_with_same_bpp(&temp_data,data);
-    if(ret){
-        DP_ERR("%s:pic_zoom_with_same_bpp failed！\n",__func__);
-        return ret;
-    }
-    free(data->buf);
-    *data = temp_data;
-    return 0;
-}
-
 void *autoplay_thread_func(void *data)
 {
     int exit;
@@ -374,9 +323,9 @@ void *autoplay_thread_func(void *data)
                     delay_ms = frame_data->delay_ms;
                     pthread_mutex_lock(&autoplay_thread_mutex);
                     if(!autoplay_thread_exit){
-                        ret = resize_pic_pixel_data(&auto_page.page_mem,&frame_data->data);
+                        ret = adapt_pic_pixel_data(&auto_page.page_mem,&frame_data->data);
                         if(ret){
-                            DP_WARNING("%s:resize_pic_pixel_data failed!\n",__func__);
+                            DP_WARNING("%s:adapt_pic_pixel_data failed!\n",__func__);
                         }
                         flush_page_region(region,display);
                     }else{
@@ -408,9 +357,9 @@ void *autoplay_thread_func(void *data)
                 pthread_mutex_lock(&autoplay_thread_mutex);
                 if(!autoplay_thread_exit){
                     clear_pixel_data(&auto_page.page_mem,BACKGROUND_COLOR);
-                    ret = resize_pic_pixel_data(&auto_page.page_mem,&pic_cache.pixel_data);
+                    ret = adapt_pic_pixel_data(&auto_page.page_mem,&pic_cache.pixel_data);
                     if(ret){
-                        DP_WARNING("%s:resize_pic_pixel_data failed!\n",__func__);
+                        DP_WARNING("%s:adapt_pic_pixel_data failed!\n",__func__);
                     }
                     flush_page_region(region,display);
                 }else{
@@ -725,9 +674,9 @@ generate_next_cache:
                         }
                         pthread_mutex_lock(&autoplay_thread_mutex);
                         if(!autoplay_thread_exit){
-                            ret = resize_pic_pixel_data(&auto_page.page_mem,&temp_data);
+                            ret = adapt_pic_pixel_data(&auto_page.page_mem,&temp_data);
                             if(ret){
-                                DP_WARNING("%s:resize_pic_pixel_data failed!\n",__func__);
+                                DP_WARNING("%s:adapt_pic_pixel_data failed!\n",__func__);
                             }
                             flush_page_region(region,display);
                         }else{
@@ -784,7 +733,7 @@ generate_next_cache:
                 get_pic_pixel_data(cur_files[cur_file_index].file_name,cur_files[cur_file_index].file_type,&temp_data);
                 pthread_mutex_lock(&autoplay_thread_mutex);
                 if(!autoplay_thread_exit){
-                    resize_pic_pixel_data(&auto_page.page_mem,&temp_data);
+                    adapt_pic_pixel_data(&auto_page.page_mem,&temp_data);
                     flush_page_region(region,display);
                     free(temp_data.buf);
                 }else{

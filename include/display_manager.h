@@ -14,6 +14,8 @@ struct pixel_data
     /* 以行指针数组的方式指定一块存储空间 */
     unsigned int in_rows:1;
     unsigned int has_alpha:1;
+    /* 用于在浏览文件时显示预览图，表示此块内存区域内的预览图是否已完全生成 */
+    unsigned int preview_completed:1;
 };
 
 /* 表示在显示空间中的一个指定区域 */

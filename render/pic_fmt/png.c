@@ -90,7 +90,7 @@ static int png_get_pixel_data_in_rows(const char *file_name,struct pixel_data *p
     if(!pixel_data->buf && !pixel_data->in_rows){
         pixel_data->rows_buf = malloc(height * sizeof(unsigned char *));
         if(!pixel_data->rows_buf){
-            DP_ERR("malloc failed!\n");
+            DP_ERR("%s:malloc failed!\n",__func__);
             return -ENOMEM;
         }
         row_pointers = pixel_data->rows_buf;
@@ -98,7 +98,7 @@ static int png_get_pixel_data_in_rows(const char *file_name,struct pixel_data *p
         for(i = 0 ; i < height ; i++){
             row_pointers[i] = malloc(row_bytes);
             if(!row_pointers[i]){
-                DP_ERR("malloc failed!\n");
+                DP_ERR("%s:malloc failed!\n",__func__);
                 return -ENOMEM;
             }
         }
@@ -204,20 +204,15 @@ static int png_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
         row_bytes   = png_get_rowbytes(png_ptr,info_ptr);
     }
    
-    /* 到这里，应该只有两种情况了，24位的rgb和32位的argb,如果不是则退出 */DP_INFO("height:%d,width:%d\n",height,width);
-    bpp = channels * bit_depth; DP_INFO("bit_depth:%d,bpp:%d,row_bytes:%d\n",bit_depth,bpp,row_bytes);
+    /* 到这里，应该只有两种情况了，24位的rgb和32位的argb,如果不是则退出 */
+    bpp = channels * bit_depth; 
     if(bpp != 24 && bpp != 32){
         /* bpp不对劲，释放内存，并返回错误 */
         DP_ERR("%s:invalid bpp!\n",__func__);
         return -1;
     }
     /* 为传进来的pixel_data分配内存,整块分配，同时需要一个辅助的行指针数组,最好还是让此函数来分配内存 */
-    if(!pixel_data->buf && !pixel_data->in_rows){DP_INFO("line:%d\n",__LINE__);
-        row_pointers = malloc(height * sizeof(unsigned char *));
-        if(!row_pointers){
-            DP_ERR("malloc failed!\n");
-            return -ENOMEM;
-        }
+    if(!pixel_data->buf && !pixel_data->in_rows){
         pixel_data->width = width;
         pixel_data->height = height;
         if(channels == 4){
@@ -229,8 +224,14 @@ static int png_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
         pixel_data->line_bytes = row_bytes;
         pixel_data->total_bytes = pixel_data->line_bytes * pixel_data->height;
         pixel_data->buf = malloc(pixel_data->total_bytes);
+        if(!pixel_data->buf){
+            DP_ERR("%s:malloc failed!\n",__func__);
+            return -ENOMEM;
+        }
+
+        row_pointers = malloc(height * sizeof(unsigned char *));
         if(!row_pointers){
-            DP_ERR("malloc failed!\n");
+            DP_ERR("%s:malloc failed!\n",__func__);
             return -ENOMEM;
         }
         /* 设置行指针数组使其指向合适位置 */
@@ -244,15 +245,15 @@ static int png_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
         //内存必须由此函数分配
         return -1;
     }
-    DP_INFO("line:%d\n",__LINE__);
+    
     png_read_image(png_ptr,row_pointers);
-    DP_INFO("line:%d\n",__LINE__);
+    
     png_read_end(png_ptr,info_ptr);
     
     /* 释放资源 */
     png_destroy_read_struct(&png_ptr,&info_ptr,NULL);
     free(row_pointers);
-    fclose(fp);DP_INFO("line:%d\n",__LINE__);
+    fclose(fp);
     return 0;
 }
 

@@ -63,7 +63,7 @@ static int utf8_is_support(const char *file_name)
     int i,j,fd;
     int lead_one;
     const char utf8_bom[] = {0xef,0xbb,0xbf,0};
-    char file_buf[40];
+    char file_buf[100];
     char *file_pos;
 
     if((fd = open(file_name,O_RDONLY)) < 0){
@@ -71,7 +71,7 @@ static int utf8_is_support(const char *file_name)
         return errno;
     }
 
-    if(40 != read(fd,file_buf,40)){
+    if(100 != read(fd,file_buf,100)){
         perror("write text file failed!\n");
         return errno;
     }
@@ -80,9 +80,9 @@ static int utf8_is_support(const char *file_name)
         return 1;
     }else{
         /* 如果出现字节序标记当然可以直接确定，BOM对于utf8不是必需的 */
-        /* 这里尝试检测前10个字符，看它是否符合utf8的模式 */
+        /* 这里尝试检测前100个字节，看它是否符合utf8的模式 */
         file_pos = file_buf;
-        for(i = 0 ; i < 10 ; i++){
+        for(i = 0 ; i < 100 ; i++){
             if(!((*file_pos) & 0x80)){
                 /* 以0开始，说明是一个兼容的ascii */
                 file_pos++;
@@ -93,12 +93,13 @@ static int utf8_is_support(const char *file_name)
                 continue;
             }else{
                 /* 找到了一个首字节，看后续字节是否符合要求 */
-                lead_one = lead_one_count_in_byte(*file_buf);
+                lead_one = lead_one_count_in_byte(*file_pos);
                 for(j = 1 ; j <= lead_one ; j++){
-                    if((file_buf[j] & 0xc0) != 0x80)
+                    if((file_pos[j] & 0xc0) != 0x80)
                         return 0;
                 }
-                file_pos += 1 + lead_one;
+                i += lead_one;
+                file_pos += (1 + lead_one);
             }
         }
         return 1;

@@ -18,20 +18,20 @@ static int ascii_font_init(struct font_decoder *decoder)
 static int ascii_is_support(const char *file_name)
 {
     int i,fd;
-    char file_buf[50];
+    char file_buf[100];
     
     if((fd = open(file_name,O_RDONLY)) < 0){
         perror("open text file failed!\n");
-        return errno;
+        return 0;
     }
 
-    if(50 != read(fd,file_buf,50)){
-        perror("write text file failed!\n");
-        return errno;
+    if(100 != read(fd,file_buf,100)){
+        perror("read text file failed!\n");
+        return 0;
     }
     close(fd);
-    /* 如果前50个字节的第七位都为0，则认为是ascii */
-    for(i = 0 ; i < 50 ; i++){
+    /* 如果前100个字节的第七位都为0，则认为是ascii */
+    for(i = 0 ; i < 100 ; i++){
         if(file_buf[i] & 0x80){
             return 0;
         } 

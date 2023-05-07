@@ -137,7 +137,12 @@ void destroy_icon_pixel_datas(struct page_struct *page,struct pixel_data *icon_d
 /* @description : 调整 src_data 图像的大小，使其刚好能放入到 dst_data 中,并复制到 dst_data 中 ；
  * @parma : dst_data - 存放最终的图像，必须指定宽高；支持的bpp：16、24、32；
  * @param : src_data - 源图像，对其进行缩放；支持的bpp：16、24、32 */
-int resize_pic_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_data);
+int adapt_pic_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_data);
+
+/* @description : 调整 src_data 图像的大小，使其长宽适应 width 和 height，并将调整后的数据放入到 dst_data 中 ；
+ * @parma : dst_data - 存放最终的图像，只指定bpp就好了，其他的什么都不要指定；
+ * @param : src_data - 源图像，对其进行缩放,使其刚好能放入到width x height 的区域中；支持的bpp：16、24、32 */
+int resize_pic_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_data,int width,int height);
 
 int invert_region(struct pixel_data *);
 int press_region(struct page_region *region,int press,int pattern);

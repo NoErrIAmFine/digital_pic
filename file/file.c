@@ -87,8 +87,8 @@ int get_dir_contents(const char *dir_name,struct dir_entry ***dir_contents,unsig
     struct dir_entry **my_dir_entrys;
     unsigned int nums;
     int i,my_dir_index;
-    DP_ERR("enter:%s\n",__func__);
     nums = scandir(dir_name,&orig_dirents,NULL,alphasort);
+
     if(nums < 0){
         DP_ERR("%s:scandir error!\n",__func__);
         return nums;
@@ -166,6 +166,76 @@ int get_dir_contents(const char *dir_name,struct dir_entry ***dir_contents,unsig
     free(orig_dirents);
 
     return 0;
+}
+
+/* 从一个完整的文件名中获取目录的名字 */
+char *get_dir_name(const char *file_full_name)
+{
+    char *buf_end,*buf_start,*dir_name;
+    unsigned int n = strlen(file_full_name);
+    char buf[n + 1];
+
+    strcpy(buf,file_full_name);
+    buf_start = buf;
+    buf[n] = '\0';
+
+    /* 如果不是绝对路径，直接退出 */
+    if(buf_start[0] != '/'){
+        return (void *)(-1);
+    }   
+
+    // "//xxx" 这样的根目录也是合法的,这里是为了删除前面多余的斜线
+    if(buf_start[0] == '/' && buf_start[1] == '/'){
+        buf_start++;       
+    }
+
+    /* 解析出文件所出的目录 */
+    buf_end = strrchr(buf_start,'/');
+
+    if(buf_end == buf_start){  
+        // '/xxx',处于根目录下的文件       
+        dir_name = malloc(2);
+        dir_name[0] = '/';
+        dir_name[1] = '\0';
+    }else{
+        *buf_end = '\0';
+        dir_name = malloc(strlen(buf_start) + 1);
+        strcpy(dir_name,buf_start);
+    }
+
+    return dir_name;
+}
+
+/* 从一个完整的文件名中获取文件的名字 */
+char *get_file_name(const char *file_full_name)
+{
+    char *buf_end,*buf_start,*file_name;
+    unsigned int n = strlen(file_full_name);
+    char buf[n + 1];
+
+    strcpy(buf,file_full_name);
+    buf_start = buf;
+    buf[n] = '\0';
+
+    /* 如果不是绝对路径，直接退出 */
+    if(buf_start[0] != '/'){
+        return (void *)(-1);
+    }   
+
+    // "//xxx" 这样的根目录也是合法的,这里是为了删除前面多余的斜线
+    if(buf_start[0] == '/' && buf_start[1] == '/'){
+        buf_start++;       
+    }
+
+    /* 找到最后一个’/‘所在的位置*/
+    buf_end = strrchr(buf_start,'/');
+
+    buf_end++;
+
+    file_name = malloc(strlen(buf_end) + 1);
+    strcpy(file_name,buf_end);
+
+    return file_name;
 }
 
 /* 给定一图片,找出与该文件同属一个目录下的其他图片文件,将这些信息存入一数组 */
@@ -331,7 +401,7 @@ int get_file_type(const char *path,const char *name)
     struct font_decoder *decoder;
     char buf[4];
     const char *decoder_names[] = {
-        "utf-8","utf-16be","utf-16le",
+        "ascii","utf-8","utf-16be","utf-16le",
     };
 
     const char *parser_names[] = {
@@ -361,7 +431,7 @@ int get_file_type(const char *path,const char *name)
     }
 
     /* 再判断是不是文本文件 */
-    for(i = 0 ; i < 3; i++){
+    for(i = 0 ; i < 4; i++){
         decoder = get_font_decoder_by_name(decoder_names[i]);
         if(decoder && decoder->is_support){
             if(decoder->is_support(full_name)){

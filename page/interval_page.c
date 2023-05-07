@@ -148,10 +148,6 @@ static int interval_page_init(void)
         regions[REGION_RETURN].y_pos = y_cursor;
         regions[REGION_RETURN].height = unit_distance;
         regions[REGION_RETURN].width = unit_distance * 2;
-        for(i = 0 ; i < 5 ; i++){
-            printf("regions[i].x_pos:%d,regions[i].y_pos:%d\n",regions[i].x_pos,regions[i].y_pos);
-            printf("regions[i].height:%d,regions[i].width:%d\n",regions[i].height,regions[i].width);
-        }
     }else{
         /* 横屏 */
         /* 暂不考虑 */ 

@@ -124,7 +124,7 @@ int picfmt_parser_init(void)
     /* 如果只是一张图片获取失败不应该直接退出，给它返回一张专门表示错误的图片就好了 */
     memset(&load_err_img,0,sizeof(struct pixel_data));
     ret = get_pic_pixel_data(load_err_img_name,FILETYPE_FILE_PNG,&load_err_img);
-    if(!ret){
+    if(ret){
         DP_ERR("%s:load 'err image' failed!\n",__func__);
         return -1;
     }
@@ -137,13 +137,13 @@ int get_pic_pixel_data(const char *pic_file,char file_type,struct pixel_data *pi
 {
     int ret;
     struct picfmt_parser *parser;
-
+    
     parser = get_parser_by_name(parser_names[(int)file_type]);
     if(!parser){
         DP_ERR("%s:get_parser_by_name failed!\n",__func__);
         return -1;
     }
-   
+    
     ret = parser->get_pixel_data(pic_file,pixel_data);
     if(ret){
         DP_ERR("%s:pic parser get_pixel_data failed!\n",__func__);
@@ -156,7 +156,7 @@ int get_pic_pixel_data(const char *pic_file,char file_type,struct pixel_data *pi
             return -ENOMEM;
         }
         copy_pixel_data(pixel_data,&load_err_img);
-        return 1;
+        return 0;
     }
     
     return 0;

@@ -317,7 +317,7 @@ int unmap_regions_to_page_mem(struct page_struct *page)
 /* @description : 调整 src_data 图像的大小，使其刚好能放入到 dst_data 中,并复制到 dst_data 中 ；
  * @parma : dst_data - 存放最终的图像，必须指定宽高；支持的bpp：16、24、32；
  * @param : src_data - 源图像，对其进行缩放；支持的bpp：16、24、32 */
-int resize_pic_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_data)
+int adapt_pic_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_data)
 {
     int i,j;
     int resized_width,resized_height;
@@ -536,6 +536,62 @@ int resize_pic_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_dat
 
     return 0;
 }
+
+/* @description : 调整 src_data 图像的大小，使其长宽适应 width 和 height，并将调整后的数据放入到 dst_data 中 ；
+ * @parma : dst_data - 存放最终的图像，只指定bpp就好了，其他的什么都不要指定；
+ * @param : src_data - 源图像，对其进行缩放,使其刚好能放入到width x height 的区域中；支持的bpp：16、24、32 */
+int resize_pic_pixel_data(struct pixel_data *dst_data,struct pixel_data *src_data,int width,int height)
+{
+    int i,ret;
+    int src_width,src_height;
+    int dst_width,dst_height;
+    float scale;
+
+    src_width = src_data->width;
+    src_height = src_data->height;
+    scale = (float)src_height / src_width;
+
+    /* 确定缩放后的图片大小 */
+    if(width >= src_width && height >= src_height){
+        /* 图片可完全显示，保留原有尺寸 */
+        dst_width = src_width;
+        dst_height = src_height;
+    }else if(width < src_width && height < src_height){
+        /* 先将宽度缩至允许的最大值 */
+        dst_width = width;
+        dst_height = scale * dst_width;
+        if(dst_height > height){
+            /* 还要继续缩小 */
+            dst_height = height;
+            dst_width = dst_height / scale;
+        }
+    }else if(width < src_width){
+        dst_width = width;
+        dst_height = dst_width * scale;
+    }else if(height < src_height){
+        dst_height = height;
+        dst_width = dst_height / scale;
+    }
+
+    /* 分配内存 */
+    if(!dst_data->bpp){
+        dst_data->bpp = src_data->bpp;
+    }
+    dst_data->width = dst_width;
+    dst_data->height = dst_height;
+    // printf("%s-%d,width:%d-height:%d\n",__func__,__LINE__,width,height);
+    // printf("%s-%d,dst_width:%d-dst_height:%d\n",__func__,__LINE__,dst_width,dst_height);
+    // printf("%s-%d,src_width:%d-src_height:%d\n",__func__,__LINE__,src_width,src_height);
+    /* 直接调用缩放函数 */
+    ret = pic_zoom(dst_data,src_data);
+    if(ret){
+        DP_ERR("%s:pic zoom failed!\n",__func__);
+        return ret;
+    }
+
+    return 0;
+}
+
 
 /* 准备图标数据，只支持png格式文件，将图标原样读出，不进行缩放 */
 static int get_icon_pixel_datas(struct pixel_data *icon_datas,const char **icon_names,int icon_num)

@@ -56,7 +56,7 @@ static int jpeg_get_pixel_data(const char *file_name,struct pixel_data *pixel_da
     if(!pixel_data->buf){
         pixel_data->buf = malloc(pixel_data->total_bytes);
         if(!pixel_data->buf){
-            DP_ERR("malloc failed!\n");
+            DP_ERR("%s:malloc failed! need %d memory\n",__func__,pixel_data->total_bytes);
             return -ENOMEM;
         }
     }

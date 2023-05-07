@@ -1,5 +1,6 @@
 #include "debug_manager.h"
 #include "pic_operation.h"
+#include "render.h"
 
 #include <errno.h>
 #include <string.h>
@@ -7,62 +8,212 @@
 #include <stdlib.h>
 
 /* @description : 缩放图像，且只能缩小
- * @param : zoomed_data - 缩放后的图像，必须在此参数内传入要缩放到的大小信息；可以在此参数指定bpp，支持的bpp有16，24，32，
+ * @param : dst_data - 缩放后的图像，必须在此参数内传入要缩放到的大小信息；可以在此参数指定bpp，支持的bpp有16，24，32，
  * 如果不指定(bpp为0），则与源数据bpp相同；此参数可含指向已分配内存的指针，如果该指针为空，该函数会负责分配内存
  * @param : src_data - 原始数据，支持的bpp有16，24，32
  * @return : 0 - 成功 ； 其他值 - 失败
  */
-int pic_zoom(struct pixel_data *zoomed_data,struct pixel_data *src_data)
+int pic_zoom(struct pixel_data *dst_data,struct pixel_data *src_data)
 {
     int i,j;
-    unsigned short red,green,blue,color;
-    int zoomed_width   = zoomed_data->width;
-    int zoomed_height  = zoomed_data->height;
-    int src_line_bytes = src_data->line_bytes;
-    unsigned char *src_buf = src_data->buf;
-    unsigned char *dst_line_buf;
-    unsigned char **dst_buf = zoomed_data->rows_buf;
-    float scale_y,scale_x;
-    unsigned int scale_x_table[zoomed_width];
+    int src_width,src_height;
+    int dst_width,dst_height;
+    unsigned char *src_line_buf,*dst_line_buf;
+    float scale_x,scale_y;
+    int bytes_per_pixel,src_y;
+    int scale_x_table[dst_data->width];
+    unsigned char src_red,src_green,src_blue;
+    unsigned char dst_red,dst_green,dst_blue;
+    unsigned char red,green,blue;
+    unsigned int color,orig_color;
+    unsigned short color_16;
+    unsigned char alpha;
 
     /* 检查一些条件 */ 
-    if(zoomed_data->width >= src_data->width || zoomed_data->height >=src_data->height){
+    if(!dst_data->width || !dst_data->height || dst_data->width > src_data->width || dst_data->height > src_data->height){
         DP_WARNING("%s:err!\n",__func__);
         return -1;
     }
     /* bpp只支持16、24、32的转换，更多的情况暂不考虑 */
-    if((zoomed_data->bpp != 16 && zoomed_data->bpp != 24 && zoomed_data->bpp != 32 && zoomed_data->bpp != 0) || \
-       (src_data->bpp != 16 && src_data->bpp != 24 && src_data->bpp != 24)){
-        DP_WARNING("%s:imcompatibel bpp,zoomed bpp %d,src bpp %d!\n",__func__,zoomed_data->bpp,src_data->bpp);
+    if((dst_data->bpp != 16 && dst_data->bpp != 24 && dst_data->bpp != 32 && dst_data->bpp != 0) || \
+       (src_data->bpp != 16 && src_data->bpp != 24 && src_data->bpp != 32)){
+        DP_WARNING("%s:imcompatibel bpp,zoomed bpp %d,src bpp %d!\n",__func__,dst_data->bpp,dst_data->bpp);
         return -1;
     }
     
-    /* 计算x方向上的比例系数 */
-    scale_x = (float)(src_data->width) / zoomed_data->width;
-    for(i = 0 ; i < zoomed_width ; i++){
-        scale_x_table[i] = scale_x * i;
+    dst_width   = dst_data->width;
+    dst_height  = dst_data->height;
+    src_width   = src_data->width;
+    src_height  = src_data->height;
+
+    /* 检查内存，如果分配了内存，检查大小是否符合要求 */
+    if(dst_data->buf || dst_data->in_rows){
+        if((dst_data->width * dst_data->bpp / 8) >= dst_data->line_bytes || \
+           ((dst_data->width * dst_data->bpp / 8) * dst_data->height) >= dst_data->total_bytes){
+            //内存过小，重新分配内存
+            dst_data->buf = NULL;
+            dst_data->rows_buf = NULL;
+            dst_data->in_rows = 0;
+        }
     }
     
-    scale_y = (float)(src_data->height) / zoomed_data->height;
-    for(i = 0 ; i < zoomed_height ; i++){
+    if(!dst_data->buf && !dst_data->in_rows){
+        /* 确定目标区域的内存，如果未分配则分配 */
+        dst_data->rows_buf = NULL;
+        dst_data->line_bytes = dst_data->width * dst_data->bpp / 8;
+        dst_data->total_bytes = dst_data->line_bytes * dst_data->height;
+        if(NULL == (dst_data->buf = malloc(dst_data->total_bytes))){
+            DP_ERR("%s:malloc failed!\n",__func__);
+            return -ENOMEM;
+        }
+        clear_pixel_data(dst_data,BACKGROUND_COLOR);
+    }
+
+    /* 开始缩放操作 */
+    scale_x = (float)src_width / dst_width;
+    for(i = 0 ; i < dst_width ; i++){
+        scale_x_table[i] = i * scale_x;
+    }
+
+    scale_y = (float)src_height / dst_height;
+    bytes_per_pixel = dst_data->bpp / 8;
+    
+    for(i = 0 ; i < dst_height ; i++){
+        src_y = i * scale_y;
+        if(src_data->in_rows){
+            src_line_buf = src_data->rows_buf[src_y];
+        }else{
+            src_line_buf = src_data->buf + src_data->line_bytes * src_y;
+        }
+        if(dst_data->in_rows){
+            dst_line_buf = dst_data->rows_buf[i];
+        }else{
+            dst_line_buf = dst_data->buf + dst_data->line_bytes * i;
+        }
         
-        dst_line_buf = dst_buf[i];
-        src_buf += (((unsigned int)(scale_y * i)) * src_line_bytes);
-        if(src_data->bpp == 16){
-            for(j = 0 ; j < zoomed_width ; j++){
-                *(unsigned short *)dst_line_buf = *(unsigned short*)(src_buf + j * scale_x_table[j] * 2);
-                dst_line_buf += 2;
+        /* 因为兼容几种bpp，这里写的又臭又长 */
+        switch(dst_data->bpp){
+        case 16:
+            switch(src_data->bpp){
+            case 16:
+                for(j = 0 ; j < dst_width ; j++){
+                    *(unsigned short *)dst_line_buf = *(unsigned short *)(src_line_buf + (2 * scale_x_table[j]));
+                    dst_line_buf += 2;
+                }
+                break;
+            case 24:
+                for(j = 0 ; j < dst_width ; j++){
+                    // printf("scale_x_table[j]-%d\n",scale_x_table[j]);
+                    src_red   = (src_line_buf[3 * scale_x_table[j]] >> 3);
+                    src_green = (src_line_buf[3 * scale_x_table[j] + 1] >> 2);
+                    src_blue  = (src_line_buf[3 * scale_x_table[j] + 2] >> 3);
+                    color_16 = (src_red << 11 | src_green << 5 | src_blue);
+                    *(unsigned short *)dst_line_buf = color_16;
+                    // *(unsigned short *)dst_line_buf = 0xbb;
+                    dst_line_buf += 2;
+                }
+                break;
+            case 32:
+                for(j = 0 ; j < dst_width ; j++){
+                    alpha     = src_line_buf[4 * scale_x_table[j]];
+                    src_red   = src_line_buf[4 * scale_x_table[j] + 1] >> 3;
+                    src_green = src_line_buf[4 * scale_x_table[j] + 2] >> 2;
+                    src_blue  = src_line_buf[4 * scale_x_table[j] + 3] >> 3;
+                    color_16 = *(unsigned short *)dst_line_buf;
+                    dst_red   = (color_16 >> 11) & 0x1f;
+                    dst_green = (color_16 >> 5) & 0x3f;
+                    dst_blue  = color_16 & 0x1f;
+                    /* 根据透明度合并颜色,公式:显示颜色 = 源像素颜色 X alpha / 255 + 背景颜色 X (255 - alpha) / 255 */
+                    red   = (src_red * alpha) / 255 + (dst_red * (255 - alpha)) / 255;
+                    green = (src_green * alpha) / 255 + (dst_green * (255 - alpha)) / 255;
+                    blue  = (src_blue * alpha) / 255 + (dst_blue * (255 - alpha)) / 255;
+                    color_16 = (red << 11) | (green << 5) | blue;
+                    *(unsigned short *)dst_line_buf = color_16;
+                    // *(unsigned short *)dst_line_buf = 0xff;
+                    dst_line_buf += 2;
+                }
+                break;
             }
-        }else if(src_data->bpp == 24){
-            for(j = 0 ; j < zoomed_width ; j++){
-                int temp = j * scale_x_table[j];
-                red   = src_buf[temp * 3] >> 3;
-                green = src_buf[temp * 3 + 1] >> 2;
-                blue  = src_buf[temp * 3 + 2] >> 3;
-                color = red << 11 | green << 5 | blue;
-                *(unsigned short *)dst_line_buf = color;
-                dst_line_buf += 2;
+            break;
+        case 24:
+            switch(src_data->bpp){
+            case 16:
+                for(j = 0 ; j < dst_width ; j++){
+                    /* 取出各颜色分量 */
+                    color_16  = *(unsigned short *)(src_line_buf + 2 * scale_x_table[j]);
+                    src_red   = (color_16 >> 11) << 3;
+                    src_green = ((color_16 >> 5) & 0x3f) << 2;
+                    src_blue  = (color_16 & 0x1f) << 3;
+                    
+                    dst_line_buf[j * 3]     = src_red;
+                    dst_line_buf[j * 3 + 1] = src_green;
+                    dst_line_buf[j * 3 + 2] = src_blue;
+                    dst_line_buf += 3;
+                }
+                break;
+            case 24:
+                for(j = 0 ; j < dst_width ; j++){
+                    memcpy(dst_line_buf,(src_line_buf + 3 * scale_x_table[j]),3);
+                    dst_line_buf += 3;
+                }
+                break;
+            case 32:
+                for(j = 0 ; j < dst_width ; j++){
+                    alpha     = src_line_buf[scale_x_table[j] * 4];
+                    src_red   = src_line_buf[scale_x_table[j] * 4 + 1];
+                    src_green = src_line_buf[scale_x_table[j] * 4 + 2];
+                    src_blue  = src_line_buf[scale_x_table[j] * 4 + 3];
+                    dst_red   = dst_line_buf[j * 3] ;
+                    dst_green = dst_line_buf[j * 3 + 1];
+                    dst_blue  = dst_line_buf[j * 3 + 2];
+                    
+                    /* 根据透明度合并颜色,公式:显示颜色 = 源像素颜色 X alpha / 255 + 背景颜色 X (255 - alpha) / 255 */
+                    red   = (src_red * alpha) / 255 + (dst_red * (255 - alpha)) / 255;
+                    green = (src_green * alpha) / 255 + (dst_green * (255 - alpha)) / 255;
+                    blue  = (src_blue * alpha) / 255 + (dst_blue * (255 - alpha)) / 255;
+                    color = (red << 11) | (green << 5) | blue;
+                    dst_line_buf[j * 3]     = red;
+                    dst_line_buf[j * 3 + 1] = green;
+                    dst_line_buf[j * 3 + 2] = blue;
+                }
+                break;
             }
+            break;
+        case 32:
+            switch(src_data->bpp){
+            case 16:
+                for(j = 0 ; j < dst_width ; j++){
+                    /* 取出各颜色分量 */
+                    color_16  = *(unsigned short *)(src_line_buf + (2 * scale_x_table[j]));
+                    src_red   = (color_16 >> 11) << 3;
+                    src_green = ((color_16 >> 5) & 0x3f) << 2;
+                    src_blue  = (color_16 & 0x1f) << 3;
+                    
+                    dst_line_buf[j * 4] = 0xff;             //默认不透明
+                    dst_line_buf[j * 4 + 1] = src_red;
+                    dst_line_buf[j * 4 + 2] = src_green;
+                    dst_line_buf[j * 4 + 2] = src_blue;
+                }
+                break;
+            case 24:
+                for(j = 0 ; j < dst_width ; j++){
+                    src_red     = src_line_buf[3 * scale_x_table[j] + 0] >> 3;
+                    src_green   = src_line_buf[3 * scale_x_table[j] + 1] >> 2;
+                    src_blue    = src_line_buf[3 * scale_x_table[j] + 2] >> 3;
+                    dst_line_buf[j * 4]     = 0;
+                    dst_line_buf[j * 4 + 1] = src_red;
+                    dst_line_buf[j * 4 + 2] = src_green;
+                    dst_line_buf[j * 4 + 2] = src_blue;
+                }
+                break;
+            case 32:
+                for(j = 0 ; j < dst_width ; j++){
+                    *(unsigned int *)dst_line_buf = *(unsigned int *)(src_line_buf + (4 * scale_x_table[j]));
+                    dst_line_buf += 4;
+                }
+                break;
+            }
+            break;
         }
     }
     return 0;

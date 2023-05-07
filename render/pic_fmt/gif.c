@@ -65,7 +65,7 @@ static int gif_get_pixel_data(const char *file_name,struct pixel_data *pixel_dat
        return err;
     }
     
-    for (i = 0; i < gif_file->SWidth; i++)                          /* Set its color to BackGround. */
+    for (i = 0; i < gif_file->SWidth; i++)                              /* Set its color to BackGround. */
         screen_buffer[0][i] = gif_file->SBackGroundColor;
     for (i = 1; i < gif_file->SHeight; i++) {
         /* Allocate the other rows, and set their color to background too: */
@@ -185,15 +185,19 @@ exit_loop:
     /* 将线程池数据结构返回,复用row_buf指针 */
     pixel_data->rows_buf = (unsigned char **)thread_pool;  
     /* 如果当前获取的文件正是现在正在查看的，启动一个线程以更新动画 */
-    if(*view_pic_priv->cur_gif_file){
-        cur_file_name = *view_pic_priv->cur_gif_file;
+    pthread_mutex_lock(&thread_pool->pool_mutex);
+    if(*(view_pic_priv->cur_gif_file)){
+        cur_file_name = *(view_pic_priv->cur_gif_file);
         /* 最后检测一次看当前文件打开文件是否为当前显示文件 */
         if(strcmp(cur_file_name,file_name)){
+            pthread_mutex_unlock(&thread_pool->pool_mutex);
             goto release_screen_buffer;
         }
     }else{
+        pthread_mutex_unlock(&thread_pool->pool_mutex);
         goto release_screen_buffer;
     }
+     pthread_mutex_unlock(&thread_pool->pool_mutex);
     
     /* 将已经读出来的第一帧数据缓存到线程数据结构中 */
     if(NULL == (frame_data = malloc(sizeof(struct gif_frame_data)))){
@@ -218,7 +222,8 @@ submit:
         /* 当前有空闲线程，不用等待，找到一个未提交任务的线程数据 */
         for(i = 0 ; i < THREAD_NUMS ; i++){
             if(!thread_pool->thread_datas[i].submitted){
-                thread_pool->thread_datas[i].file_name = cur_file_name;
+                thread_pool->thread_datas[i].file_name = malloc(strlen(cur_file_name));
+                strcpy(thread_pool->thread_datas[i].file_name,cur_file_name);
                 thread_pool->thread_datas[i].gif_file = gif_file;
                 thread_pool->thread_datas[i].screen_buf = screen_buffer;
                 thread_pool->thread_datas[i].submitted = 1;
@@ -326,7 +331,6 @@ refind:
             goto refind;
         }
         pthread_mutex_unlock(&thread_pool->pool_mutex);
-        // printf("线程：%d开始执行\n",(int)pthread_self());
 
         /* 读取数据后续的帧 */
         thread_data = &thread_pool->thread_datas[task_index];
@@ -416,7 +420,7 @@ refind:
                         DGifGetLine(gif_file,&screen_buffer[row++][col],width);
                     }
                 }   
-
+                
                 color_map = (gif_file->Image.ColorMap ? gif_file->Image.ColorMap : gif_file->SColorMap);
                 if(color_map == NULL){
                     DP_ERR("%s:Gif Image does not have a color_map\n",__func__);
@@ -471,7 +475,7 @@ refind:
 
                 /* 显示数据，检查此线程处理的文件是否为当前正显示的文件，如果是则显示，如果不是则进入销毁阶段 */
                 pthread_mutex_lock(&view_pic_priv->gif_mutex);
-                if(*view_pic_priv->cur_gif_file == thread_data->file_name){
+                if(*view_pic_priv->pic_cache && *view_pic_priv->cur_gif_file && !strcmp(*view_pic_priv->cur_gif_file,thread_data->file_name)){
                     /* 相同则显示，先按大小缩放 */
                     if(pic_cache->data.buf){
                         free(pic_cache->data.buf);
@@ -483,7 +487,8 @@ refind:
                     if(frame_data->delay_ms){
                         usleep(1000 * frame_data->delay_ms);
                     }
-                    pic_zoom_with_same_bpp_and_rotate(&pic_cache->data,&frame_data->data,pic_cache->angle);
+                    pic_zoom(&pic_cache->data,&frame_data->data);
+                    // pic_zoom_with_same_bpp_and_rotate(&pic_cache->data,&frame_data->data,pic_cache->angle);
                     fill_pic_func = view_pic_priv->fill_main_pic_area;
                     if((err = fill_pic_func(view_pic_page))){
                         pthread_mutex_unlock(&view_pic_priv->gif_mutex);
@@ -493,17 +498,17 @@ refind:
                     pthread_mutex_unlock(&view_pic_priv->gif_mutex);
                 }else{
                     /* 否则进入销毁过程 */
+                    free(thread_data->file_name);
+                    thread_data->file_name = NULL;
                     pthread_mutex_unlock(&view_pic_priv->gif_mutex);
                     goto release_frame_data;
                 }
-                
                 break;
             case EXTENSION_RECORD_TYPE:
                 /* 扩展块*/
                 if(DGifGetExtension(gif_file,&ext_code,&extension)==GIF_ERROR)
                     break;
                 while(extension != NULL){
-                    
                     extension_temp = extension;
                     if(DGifGetExtensionNext(gif_file, &extension) == GIF_ERROR)
                         break;
@@ -542,37 +547,39 @@ refind:
         while(frame_data){
             /* 显示数据，检查此线程处理的文件是否为当前正显示的文件，如果是则显示，如果不是则进入销毁阶段 */
             pthread_mutex_lock(&view_pic_priv->gif_mutex);
-            if(*view_pic_priv->cur_gif_file == thread_data->file_name){
-                /* 相同则显示，先按大小缩放 */
+            if(*view_pic_priv->pic_cache && *view_pic_priv->cur_gif_file && !strcmp(*view_pic_priv->cur_gif_file,thread_data->file_name)){
+                /* 相同则显示，先按大小缩放 */printf("%s-%d\n",__func__,__LINE__);
                 if(pic_cache->data.buf){
                     free(pic_cache->data.buf);
                     pic_cache->data.buf = NULL;
                     pic_cache->data.in_rows = 0;
                     pic_cache->data.rows_buf = NULL;
-                }
+                }printf("%s-%d\n",__func__,__LINE__);
                 /* 如果有需要则延时 */
                 if(frame_data->delay_ms){
                     usleep(1000 * frame_data->delay_ms);
                 }
-                pic_zoom_with_same_bpp_and_rotate(&pic_cache->data,&frame_data->data,pic_cache->angle);
+                pic_zoom(&pic_cache->data,&frame_data->data);
                 fill_pic_func = view_pic_priv->fill_main_pic_area;
                 if((err = fill_pic_func(view_pic_page))){
                     pthread_mutex_unlock(&view_pic_priv->gif_mutex);
                     goto release_frame_data;
-                }
+                }printf("%s-%d\n",__func__,__LINE__);
                 flush_page_region(&view_pic_page->page_layout.regions[5],display);
                 pthread_mutex_unlock(&view_pic_priv->gif_mutex);
             }else{
                 /* 否则进入销毁过程 */
+                free(thread_data->file_name);
+                thread_data->file_name = NULL;
                 pthread_mutex_unlock(&view_pic_priv->gif_mutex);
                 break;
             }
-            
+            printf("%s-%d\n",__func__,__LINE__);
             if(frame_data->next){
                 frame_data = frame_data->next;
             }else{
                 frame_data = thread_data->frame_data;
-            }
+            }printf("%s-%d\n",__func__,__LINE__);
         }
         
 release_frame_data:

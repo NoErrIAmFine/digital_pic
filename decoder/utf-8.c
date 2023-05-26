@@ -76,6 +76,7 @@ static int utf8_is_support(const char *file_name)
         return errno;
     }
     close(fd);
+    return 1;
     if(!strncmp(utf8_bom,file_buf,3)){
         return 1;
     }else{

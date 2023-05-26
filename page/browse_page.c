@@ -989,7 +989,7 @@ file_index_changed:
         for(i = 0 ; i < files_per_page ; i++){
             if(pre_start_file_index + i >= cur_dirent_nums)
                 break;
-            printf("%s-%d\n",__func__,__LINE__);
+            
             /* 获取到要检查的文件的类型和名字 */
             pthread_mutex_lock(&preview_thread_mutex);
             if(strcmp(cur_dir,pre_cur_dir)){
@@ -999,18 +999,18 @@ file_index_changed:
                 pthread_mutex_unlock(&preview_thread_mutex);
                 goto retry;
             }
-            printf("%s-%d\n",__func__,__LINE__);
+            
             if(!cur_dir_contents[pre_start_file_index + i]->file_type && cur_dir_contents[pre_start_file_index + i]->type == FILETYPE_REG ){
                 cur_dir_contents[pre_start_file_index + i]->file_type = get_file_type(cur_dir,cur_dir_contents[pre_start_file_index + i]->name);
             }
             file_type = cur_dir_contents[pre_start_file_index + i]->file_type;
-            printf("%s-%d\n",__func__,__LINE__);
+            
             /* 构造文件名 */
             if(preview_file_name){
                 free(preview_file_name);
                 preview_file_name = NULL;
             }
-            printf("%s-%d\n",__func__,__LINE__);
+            
             if(NULL == (preview_file_name = malloc(strlen(cur_dir) + 2 + strlen(cur_dir_contents[pre_start_file_index + i]->name)))){
                 DP_ERR("%s:malloc failed!\n",__func__);
                 destroy_preview_caches();
@@ -1022,7 +1022,7 @@ file_index_changed:
             // printf("%s-%d-preview_file_name:%s\n",__func__,__LINE__,preview_file_name);
             // printf("%s-%d-pre_start_file_index + i:%d\n",__func__,__LINE__,pre_start_file_index + i);
             pthread_mutex_unlock(&preview_thread_mutex);
-            printf("%s-%d\n",__func__,__LINE__);
+            
             if(file_type >= FILETYPE_FILE_BMP && file_type <= FILETYPE_FILE_GIF){               
                 /* 尝试寻找当前页面第一张图片对应的缓存，如果没有则生成 */
                 list_for_each_entry(preview_cache,&preview_cache_list,list){
@@ -1059,7 +1059,7 @@ file_index_changed:
                             preview_cache_size -= sizeof(*temp_cache);
                         }
                     }
-                    printf("%s-%d\n",__func__,__LINE__);
+                    
                     /* 生成新缓存 */
                     /* 分配一个 preview_cache */
                     if(NULL == (preview_cache = malloc(sizeof(struct preview_cache)))){
@@ -1085,7 +1085,7 @@ file_index_changed:
                         }
                         preview_cache_size += preview_cache->data.total_bytes;
                     }
-                    printf("%s-%d\n",__func__,__LINE__);
+                    
                     /* 更新缓存大小数据，将preview_cache加入链表 */
                     preview_cache_size += sizeof(struct preview_cache);
                     if(list_empty(&preview_cache_list)){
@@ -1103,7 +1103,7 @@ file_index_changed:
                             list_add_tail(&preview_cache->list,&preview_cache_list);
                         }
                     }
-                    printf("%s-%d\n",__func__,__LINE__);
+                    
                     /* 释放原有数据，不得不说，为了读个缩略图，这个代价有点太大了 */
                     if(pixel_data.buf){
                         free(pixel_data.buf);
@@ -1115,7 +1115,7 @@ file_index_changed:
                         free(pixel_data.rows_buf);
                     }
                 }   
-                printf("%s-%d\n",__func__,__LINE__);
+                
                 /* 如果能够找到缓存则直接更新到显存上，每次都更新 */
                 /* 因为获取完预览图后，可能已经点击了下一页，要检查是否还是当前目录及是否是当前页，且要用互斥量保护 */
                 pthread_mutex_lock(&preview_thread_mutex);
@@ -1127,14 +1127,14 @@ file_index_changed:
                     pthread_mutex_unlock(&preview_thread_mutex);
                     goto retry;
                 }
-                printf("%s-%d\n",__func__,__LINE__);
+                
                 /* 如果起始索引改变（页数改变），重新开始循环 */
                 if(start_file_index != pre_start_file_index){
                     pre_start_file_index = start_file_index;
                     pthread_mutex_unlock(&preview_thread_mutex);
                     goto file_index_changed;
                 }
-                printf("%s-%d\n",__func__,__LINE__);
+                
                 /* 如果要进入其它页面，暂停标志位置位，则暂停获取 */
                 if(preview_pause){
                     pthread_mutex_unlock(&preview_thread_mutex);
@@ -1525,7 +1525,7 @@ static void enable_dir_select_status(struct page_struct *browse_page,bool enable
     dir_select_region_base = REGION_FILE_DIR_BASE + files_per_page * 4;
     if(enable){
         dir_select_status = 1;
-        for(i = 0 ; i < file_count ; i++){printf("%s-%d\n",__func__,__LINE__);
+        for(i = 0 ; i < file_count ; i++){
             if(cur_dir_contents[start_file_index + i]->type == FILETYPE_DIR){
                 regions[dir_select_region_base + i].invisible = 0;
                 merge_pixel_data(regions[dir_select_region_base + i].pixel_data,&icon_pixel_datas[ICON_DIR_UNSELECTED]); 
@@ -1693,11 +1693,10 @@ static int __pre_next_page(int next_page)
         for(i = 0 ; i < files_per_page ; i++){
             if((i + start_file_index) >= cur_dirent_nums)
                 break;
-            printf("%s-%d-cur_dir_contents[i + start_file_index]->preview_cached:%d\n",__func__,__LINE__,cur_dir_contents[i + start_file_index]->preview_cached);
             if(cur_dir_contents[i + start_file_index]->file_type >= FILETYPE_FILE_BMP && \
                cur_dir_contents[i + start_file_index]->file_type <= FILETYPE_FILE_GIF && \
                cur_dir_contents[i + start_file_index]->preview_cached){
-                printf("%s-%d\n",__func__,__LINE__);
+                
                 for(j = 0 ; j < temp_data.height ; j++){
                     temp_data.rows_buf[j] = (*cur_page_cache)->buf + (*cur_page_cache)->line_bytes * (regions[base_region_index + 3 * i].y_pos + j) + \
                     (regions[base_region_index + 3 * i].x_pos - offset_x) * bytes_per_pixel;
@@ -1871,7 +1870,7 @@ static int __pre_next_page(int next_page)
                     }
                 }
             }
-            printf("%s-%d-release_index:%d\n",__func__,__LINE__,release_index);
+            
             for(i = 0 ; i < files_per_page ; i++){
                 if((i + release_index)>= cur_dirent_nums)
                     break;
@@ -2000,7 +1999,6 @@ static int file_dir_area_cb_func(int region_index,void *data)
                     DP_ERR("%s:get view_pic_page failed\n",__func__);
                     return -1;
                 }
-                printf("%s-%d-cur_dir_contents[selected_file_index].name:%s\n",__func__,__LINE__,cur_dir_contents[selected_file_index]->name);
                 break;
             case FILETYPE_FILE_TXT:
                 /* 构造文本文件名 */
@@ -2014,11 +2012,11 @@ static int file_dir_area_cb_func(int region_index,void *data)
                 }else{
                     sprintf(file_name,"%s/%s",cur_dir,cur_dir_contents[selected_file_index]->name);
                 }
-
+                
                 /* 构造页面之间传递的参数 */
                 page_param.id = browse_page.id;
                 page_param.private_data = file_name;
-
+                
                 /* 获取page_struct */
                 next_page = get_page_by_name("text_page");
                 if(!next_page){
@@ -2027,7 +2025,7 @@ static int file_dir_area_cb_func(int region_index,void *data)
                 }
                 break;
             default:
-                break;
+                return 0;
         }
         pthread_mutex_lock(&preview_thread_mutex);
         preview_pause = 1;
@@ -2157,8 +2155,8 @@ static int browse_page_run(struct page_param *pre_param)
         if(region_index < 0 || REGION_MAIN_FILE_PATH == region_index || REGION_MAIN == region_index ||
            REGION_MAIN_FILE_PAGES == region_index || REGION_MAIN_FILE_DIR == region_index){
             if(!event.presssure && (-1 != pre_region_index)){
-                press_region(&regions[pre_region_index],0,0);
-                flush_page_region(&regions[pre_region_index],default_display);
+                // press_region(&regions[pre_region_index],0,0);
+                // flush_page_region(&regions[pre_region_index],default_display);
             }
             pre_region_index = -1;
             pressure = 0;
@@ -2177,8 +2175,8 @@ static int browse_page_run(struct page_param *pre_param)
                 
                 /* 反转按下区域的颜色 */ 
                 if(region_index < dir_select_region_base){
-                    press_region(&regions[region_index],1,0);
-                    flush_page_region(&regions[region_index],default_display); 
+                    // press_region(&regions[region_index],1,0);
+                    // flush_page_region(&regions[region_index],default_display); 
                 }     
             }
         }else{                  //松开
@@ -2193,7 +2191,6 @@ static int browse_page_run(struct page_param *pre_param)
                 /* 如果点击的是文件区域,先算出点击的文件是目录项数据数组中的第几个 */
                 if(region_index >= REGION_FILE_DIR_BASE && region_index < (REGION_FILE_DIR_BASE + 4 * files_per_page)){
                     selected_file_index = (region_index - REGION_FILE_DIR_BASE - 3 * files_per_page) + start_file_index;
-                    printf("%s-%d-selected_file_index:%d\n",__func__,__LINE__,selected_file_index);
                     if(selected_file_index >= cur_dirent_nums){
                         continue;
                     }
@@ -2253,11 +2250,11 @@ static int browse_page_run(struct page_param *pre_param)
                         }
                         break;
                 }
-                invert_region(regions[region_index].pixel_data);
-                flush_page_region(&regions[region_index],default_display);
+                // invert_region(regions[region_index].pixel_data);
+                // flush_page_region(&regions[region_index],default_display);
             }else{
-                invert_region(regions[pre_region_index].pixel_data);
-                flush_page_region(&regions[pre_region_index],default_display);
+                // invert_region(regions[pre_region_index].pixel_data);
+                // flush_page_region(&regions[pre_region_index],default_display);
             }
         }
     }   

@@ -633,7 +633,7 @@ static int format_add_selected_pattern(struct pixel_data *pixel_data,int color,i
     unsigned char *line_buf;
     unsigned char red,green,blue;
     unsigned short color_16 = (unsigned short)color;
-    printf("%s-%d\n",__func__,__LINE__);
+    
     for(i = 0 ; i < height ; i++){
         if(pixel_data->in_rows){
             line_buf = pixel_data->rows_buf[i];
@@ -682,7 +682,7 @@ static int format_add_selected_pattern(struct pixel_data *pixel_data,int color,i
             break;
         }
     }
-    printf("%s-%d\n",__func__,__LINE__);
+    
     return 0;
 }
 
@@ -703,7 +703,7 @@ static int format_draw_dot_line(struct pixel_data *pixel_data,int color,int line
     y_cursor = regions[REGION_FORMAT_SELECT1].height + regions[REGION_FORMAT2_ROW1_SCALE].height - line_width;
     row_height = regions[REGION_FORMAT2_ROW1_SCALE].height;
     interval = DOT_LINE_INTERVAL;
-    printf("%s-%d\n",__func__,__LINE__);
+    
     for(i = 0 ; i < 3 ; i++){
         for(j = 0 ; j < line_width ; j++){
             reverse_bit = 0;
@@ -792,7 +792,7 @@ static int format_draw_scale_bar(struct pixel_data *pixel_data,int width,int hei
         height = pixel_data->height / 3;
     if(!width)
         width = pixel_data->width - 10 - line_width;
-    printf("%s-%d\n",__func__,__LINE__);
+    
     x_start = (pixel_data->width - width) / 2 - line_width / 2;
     y_start = (pixel_data->height - height) / 2 - line_width / 2;
     x1 = (pixel_data->width - width) / 2 + height / 2;
@@ -867,7 +867,7 @@ static int format_draw_scale_bar(struct pixel_data *pixel_data,int width,int hei
         }
     }
 
-    printf("%s-%d\n",__func__,__LINE__);
+    
     /* 画表示值所处位置的圆 */
     /* 圆半径 */
     circle_r = (height + (pixel_data->height - height) / 2) / 2;
@@ -935,7 +935,7 @@ static int fill_format2_menu_area(struct page_struct *text_page)
     int font_size;
     char buf[8];
     struct page_region *regions = text_page->page_layout.regions;
-    printf("%s-%d\n",__func__,__LINE__);
+    
     /* 描画各选项行 */
     /* 图标都是一样的,先画图标 */
     for(i = 0 ; i < 4 ; i++){
@@ -945,7 +945,7 @@ static int fill_format2_menu_area(struct page_struct *text_page)
             DP_ERR("%s:merge_pixel_data failed!\n",__func__);
             return ret;
         }
-    }printf("%s-%d\n",__func__,__LINE__);
+    }
     /* 文字 */
     font_size = regions[REGION_FORMAT2_ROW1_TEXT1].height - 20;
     ret = get_string_bitamp_from_buf("行间距",0,"utf-8",regions[REGION_FORMAT2_ROW1_TEXT1].pixel_data,FONT_ALIGN_HORIZONTAL_CENTER,0xbfed,font_size);
@@ -966,7 +966,7 @@ static int fill_format2_menu_area(struct page_struct *text_page)
     if(ret){
         DP_ERR("%s:fill font failed!\n",__func__);
         return ret;
-    }printf("%s-%d\n",__func__,__LINE__);
+    }
     /* 描画中间的刻度条 */
     ret = format_draw_scale_bar(regions[REGION_FORMAT2_ROW1_SCALE].pixel_data,0,0,4,5,MAX_LINE_SPACING);
     ret |= format_draw_scale_bar(regions[REGION_FORMAT2_ROW2_SCALE].pixel_data,0,0,4,5,MAX_SEGMENT_SPACING);
@@ -975,7 +975,7 @@ static int fill_format2_menu_area(struct page_struct *text_page)
     if(ret < 0){
         DP_ERR("%s:format_draw_scale_bar failed!\n",__func__);
         return ret;
-    }printf("%s-%d\n",__func__,__LINE__);
+    }
     return 0;
 }
 
@@ -991,32 +991,32 @@ static int show_format_menu_area(struct page_struct *text_page)
     
     /* 上一个底色 */
     clear_pixel_data(regions[REGION_FORMAT_TOTAL].pixel_data,0xeeee);
-    printf("%s-%d\n",__func__,__LINE__);
+    
     /* 给一个区域上左右三边加上边框以示选中,默认选中第一个 */
     ret = format_add_selected_pattern(regions[REGION_FORMAT_SELECT1].pixel_data,0xff,5);
     if(ret){
         DP_ERR("%s:format_add_selected_pattern failed!\n",__func__);
         return ret;
     }
-    printf("%s-%d\n",__func__,__LINE__);
+    
     /* 画各选项行之间的分割虚线 */
     ret = format_draw_dot_line(regions[REGION_FORMAT_TOTAL].pixel_data,0xf00f,2);
     if(ret){
         DP_ERR("%s:format_draw_dot_line failed!\n",__func__);
         return ret;
     }
-    printf("%s-%d\n",__func__,__LINE__);
+    
     /* 根据标志位决定显示哪一个子菜单 */
     printf("format_select_status：%d\n",format_select_status);
     if(format_select_status == 1){
-        printf("%s-%d\n",__func__,__LINE__);
+        
         ret = fill_format1_menu_area(text_page);
         if(ret){
             DP_ERR("%s:fill format1 menu area failed!\n",__func__);
             return ret;
         }
     }else if(format_select_status == 2){
-        printf("%s-%d\n",__func__,__LINE__);
+        
         ret = fill_format2_menu_area(text_page);
         if(ret){
             DP_ERR("%s:fill format2 menu area failed!\n",__func__);
@@ -1029,7 +1029,7 @@ static int show_format_menu_area(struct page_struct *text_page)
             regions[REGION_FORMAT2_ROW1_ICON2 + i * 5].invisible = 0;
         }
     }
-    printf("%s-%d\n",__func__,__LINE__);
+    
     return 0;
 }
 
@@ -1233,7 +1233,6 @@ static int show_next_page(void)
 static int format_menu_cb_func(void)
 {
     int ret = 0;
-    DP_INFO("enter :%s!\n",__func__);
     /* 显示时点击隐藏，隐藏时点击显示 */
     if(!format_select_status){
         format_select_status = 2;
@@ -1301,7 +1300,7 @@ static int text_page_run(struct page_param *pre_page_param)
     if(!text_page.already_layout){
         text_page_init();
     }
-    printf("enter-%s\n",__func__);
+    
     if(!text_page.allocated){
         /* 直接将 auto page 对应的内存映射到显存上，省的多一道复制 */
         text_page.page_mem.bpp         = default_display->bpp;
@@ -1313,7 +1312,7 @@ static int text_page_run(struct page_param *pre_page_param)
         text_page.allocated            = 1;
         text_page.share_fbmem          = 1;
     }
-    printf("%s-%d\n",__func__,__LINE__);
+    
     /* 将划分的显示区域映射到相应的页面对应的内存中 */
     if(!text_page.region_mapped){
         ret = remap_regions_to_page_mem(&text_page);
@@ -1322,7 +1321,7 @@ static int text_page_run(struct page_param *pre_page_param)
             return ret;
         }
     }
-    printf("%s-%d\n",__func__,__LINE__);
+    
     /* 准备图标数据 */
     if(!text_page.icon_prepared){
         ret = prepare_icon_pixel_datas(&text_page,icon_pixel_datas,icon_file_names,icon_region_links,ICON_NUMS);
@@ -1331,33 +1330,33 @@ static int text_page_run(struct page_param *pre_page_param)
             return ret;
         }
     }
-    printf("%s-%d\n",__func__,__LINE__);
+    
     /* 获取当前要打开的文本文件名 */
     if(pre_page_param->private_data){
         cur_file = pre_page_param->private_data;
     }
-    printf("%s-%d\n",__func__,__LINE__);
+    
     /* 获取文件信息 */
     ret = parse_text_file((char *)cur_file);
     if(ret){
         DP_ERR("%s:parse_text_file failed!\n",__func__);
         return ret;
     }
-    printf("%s-%d\n",__func__,__LINE__);
+    
     /* 获取缓存 */
     ret = generate_text_caches();
     if(ret){
         DP_ERR("%s:generate_text_caches failed!\n",__func__);
         return ret;
     }
-    printf("%s-%d\n",__func__,__LINE__);
+    
     /* 填充页面 */
     ret = text_page_fill_layout(&text_page);
     if(ret){
         DP_ERR("%s:text_page_fill_layout failed!\n",__func__);
         return ret;
     }   
-    printf("%s-%d\n",__func__,__LINE__);
+    
     /* 因为页面与显存共享一块内存，所以不用刷新 */
     
     /* 检测输入事件的循环 */

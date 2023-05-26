@@ -26,7 +26,7 @@
 3. 右边主体显示文件夹和文件图片，目前只支持几种常见图片格式和文本文件。当文件为支持的图片文件，可以直接显示预览图：
 ![显示预览图](https://github.com/NoErrIAmFine/digital_pic/blob/master/static/readmeimg/MVIMG_20230526_000535.jpg?raw=true "显示预览图")  
 
-4. 右边下面是页码，这里的页码是动态生成的，距离会自动调整，数字用图片拼成，圆角矩形框是用函数动态生成，如下是页数超过一百时的情况：
+4. 右边下面是页码，这里的页码是动态生成的，距离会自动调整，数字用图片拼成，圆角矩形框是用函数动态生成，如下是页数超过一百时的情况：  
 ![页码](https://github.com/NoErrIAmFine/digital_pic/blob/master/static/readmeimg/MVIMG_20230526_000550.jpg?raw=true "页码")  
 
 ### 预览图  
@@ -50,7 +50,7 @@
 ### 浏览文本文档
 可浏览utf-8、utf-16、ascii编码的文本,如下图所示：  
 ![浏览文本](https://github.com/NoErrIAmFine/digital_pic/blob/master/static/readmeimg/MVIMG_20230526_101733.jpg?raw=true "浏览文本")  
-点击左右两边进行翻页，点击中间区域可唤起菜单，如下图：
+点击左右两边进行翻页，点击中间区域可唤起菜单，如下图：  
 ![文本菜单](https://github.com/NoErrIAmFine/digital_pic/blob/master/static/readmeimg/MVIMG_20230526_101801.jpg?raw=true "文本菜单")  
 由于时间关系，这里并未对应功能的具体实现。
 ## 连播
@@ -59,9 +59,9 @@
 - 如果未设置连播目录，会进入“浏览页面”来选择要连播的目录：  
  ![文件夹选择状态](https://github.com/NoErrIAmFine/digital_pic/blob/master/static/readmeimg/MVIMG_20230525_185813.jpg?raw=true "文件夹选择状态")  
 ## 设置
-这里主要设置两项，要连播哪些目录下的图片，以及两张图片显示之间的间隔，如下图：
+这里主要设置两项，要连播哪些目录下的图片，以及两张图片显示之间的间隔，如下图：  
 ![设置](https://github.com/NoErrIAmFine/digital_pic/blob/master/static/readmeimg/MVIMG_20230525_185751.jpg?raw=true "设置")  
 
 - 点击“选择目录”还是会进入“浏览页面”来选择要连播的目录。
-- 点击“设置间隔”开始设置连播间隔，单位为秒，如下：
+- 点击“设置间隔”开始设置连播间隔，单位为秒，如下：  
 ![连播间隔](https://github.com/NoErrIAmFine/digital_pic/blob/master/static/readmeimg/MVIMG_20230525_185800.jpg?raw=true "连播间隔")  
